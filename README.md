@@ -1,4 +1,4 @@
-# 886 — Game Name
+# 886 — Gin Rummy
 
 CSC 667 Term Project — Spring 2026
 
