@@ -8,7 +8,7 @@ CSC 667 Term Project — Spring 2026
 |------|--------|-------|
 | Jacky Yang | Jacky-ChunChi-Yang | cyang16@sfsu.edu |
 | Ian Weng | IannnWENG | lweng@sfsu.edu |
-| Member 3 | @username | email@sfsu.edu |
+| Pei Huan Chang | hobbit200419 | pchang@sfsu.edu |
 | Member 4 | @username | email@sfsu.edu |
 
 ## Setup
