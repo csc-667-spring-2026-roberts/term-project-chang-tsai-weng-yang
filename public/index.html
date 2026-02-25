@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gin Rummy</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/about">About</a>
+    <a href="/rules">Rules</a>
+  </nav>
+  <div id="app">
+    <div id="sidebar">
+      <button id="btn-new-game">New Game</button>
+      <button id="btn-decline">Decline</button>
+      <button id="btn-sort">Sort</button>
+      <hr />
+      <p class="rule-label"><strong>How to Start:</strong></p>
+      <p class="rule-label">If you don't want the faced-up card on the left, hit the <strong>Decline</strong> button.</p>
+      <p class="rule-label">Otherwise, click <strong>Draw Discard</strong> and discard a card from your pile.</p>
+      <p class="rule-label">Draw: click <strong>Draw Stock</strong> or <strong>Draw Discard</strong>.</p>
+      <p class="rule-label">Discard: click a card to select it, then press <strong>Discard</strong>.</p>
+      <p class="rule-label">Reorganize: click a card then click another — the first moves before the second.</p>
+      <p class="rule-label">Knock: when <em>KNOCK?</em> appears, press <strong>Knock</strong>.</p>
+      <p class="rule-label">Game ends when a player reaches 100 points.</p>
+      <hr />
+      <div id="action-buttons">
+        <button id="btn-draw-discard">Draw Discard</button>
+        <button id="btn-draw-stock">Draw Stock</button>
+        <button id="btn-discard">Discard</button>
+        <button id="btn-knock">Knock!</button>
+        <button id="btn-layoff">Lay Off (Space)</button>
+        <button id="btn-view-scores">View Scores (S)</button>
+        <button id="btn-continue">Continue (C)</button>
+      </div>
+    </div>
+
+    <canvas id="canvas" width="600" height="600"></canvas>
+  </div>
+
+  <script type="module" src="/js/client.js"></script>
+</body>
+</html>
