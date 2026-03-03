@@ -3,9 +3,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import indexRouter from "./routes/index.js";
 import logging from "./middleware/logging.js";
-
-import db from "./db/connection.js";
 import dotenv from "dotenv";
+import db from "./db/connection.js";
 
 dotenv.config();
 
@@ -17,29 +16,30 @@ const __dirname = path.dirname(__filename);
 
 app.use("/", logging);
 app.use(express.static(path.join(__dirname, "..", "public")));
-app.use("/", indexRouter);
 
-// POST: Create a test record
+// POST: Write a message to the database
 app.post("/db-test", async (req, res) => {
   try {
-    await db.none("INSERT INTO milestone5_test(message) VALUES($1)", [
-      "Gin Rummy Connection Success!",
-    ]);
+    const testMessage = "Gin Rummy Connection Success!";
+    await db.none("INSERT INTO milestone5_test(message) VALUES($1)", [testMessage]);
     res.json({ message: "Saved to gin_db!" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET: Retrieve test records
+// GET Route: Reads from the database
 app.get("/db-test", async (req, res) => {
   try {
-    const data = await db.any("SELECT * FROM milestone5_test");
-    res.json(data);
+    const data = await db.any("SELECT * FROM milestone5_test ORDER BY id DESC");
+    res.json({ success: true, data });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
+
+app.use("/", indexRouter);
 
 app.listen(PORT, () => {
   console.log(
