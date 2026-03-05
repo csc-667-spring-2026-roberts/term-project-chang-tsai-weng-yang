@@ -21,14 +21,25 @@ router.get("/rules", (_req, res) => {
   res.sendFile(path.join(__dirname, "..", "..", "public", "page", "rules.html"));
 });
 
-// POST: Write a message to the database
+// POST: Write a message and get the new ID back immediately
 router.post("/db-test", async (req, res) => {
   try {
     const testMessage = "Gin Rummy Connection Success!";
-    await db.none("INSERT INTO milestone5_test(message) VALUES($1)", [testMessage]);
-    res.json({ message: "Saved to gin_db!" });
+
+    // Using db.one because RETURNING id ensures exactly one row is returned and we want to capture that new ID and timestamp
+    const result = await db.one(
+      "INSERT INTO milestone5_test(message) VALUES($1) RETURNING id, created_at",
+      [testMessage],
+    );
+
+    res.json({
+      success: true,
+      message: "Saved to gin_db!",
+      newRecordId: result.id,
+      timestamp: result.created_at,
+    });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
