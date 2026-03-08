@@ -24,7 +24,7 @@ router.get("/rules", (_req, res) => {
 // POST: Write a message and get the new ID back immediately
 router.post("/db-test", async (req, res) => {
   try {
-    const testMessage = "Gin Rummy Connection Success!";
+    const testMessage = req.body.message || "Gin Rummy Connection Success!";
 
     // Using db.one because RETURNING id ensures exactly one row is returned and we want to capture that new ID and timestamp
     const result = await db.one(

@@ -5,7 +5,6 @@ dotenv.config();
 
 const pgp = pgPromise();
 
-// Use the URL from .env
 const connectionString = process.env.DATABASE_URL;
 
 if (!connectionString) {
