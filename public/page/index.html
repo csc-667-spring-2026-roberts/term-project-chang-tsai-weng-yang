@@ -7,10 +7,19 @@
     <link rel="stylesheet" href="../css/style.css" />
   </head>
   <body>
-    <nav>
-      <a href="/">Home</a>
-      <a href="/about">About</a>
-      <a href="/rules">Rules</a>
+    <nav class="home-nav">
+      <div class="home-nav-links">
+        <a href="/">Home</a>
+        <a href="/about">About</a>
+        <a href="/rules">Rules</a>
+      </div>
+      <div class="home-nav-auth">
+        <button id="open-login" class="auth-button" type="button">Login</button>
+        <button id="open-register" class="auth-button auth-button-register" type="button">
+          Register
+        </button>
+        <button id="logout-button" class="auth-button" type="button" hidden>Log Out</button>
+      </div>
     </nav>
     <div id="app">
       <div id="sidebar">
@@ -46,11 +55,41 @@
           <button id="btn-view-scores">View Scores (S)</button>
           <button id="btn-continue">Continue (C)</button>
         </div>
+        <hr />
+        <section class="auth-demo-panel">
+          <h3>Auth Demo</h3>
+          <p id="auth-session-state" class="auth-demo-text">Checking session...</p>
+          <button id="check-protected-route" class="auth-demo-button" type="button">
+            Visit Protected Route
+          </button>
+          <pre id="protected-route-result" class="protected-route-result">
+Click the button to test /protected
+          </pre>
+        </section>
       </div>
 
       <canvas id="canvas" width="600" height="600"></canvas>
     </div>
 
-    <!-- <script type="module" src="/js/client.js"></script> -->
+    <div id="auth-modal" class="auth-modal" hidden>
+      <div class="auth-modal-backdrop" data-close-modal="true"></div>
+      <div class="auth-modal-panel" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+        <button class="auth-modal-close" type="button" data-close-modal="true">×</button>
+        <div class="auth-tabs">
+          <button id="login-tab" class="auth-tab active" type="button">Login</button>
+          <button id="register-tab" class="auth-tab" type="button">Register</button>
+        </div>
+
+        <section id="login-panel" class="auth-panel">
+          <div id="login-content"></div>
+        </section>
+
+        <section id="register-panel" class="auth-panel" hidden>
+          <div id="register-content"></div>
+        </section>
+      </div>
+    </div>
+
+    <script type="module" src="/js/auth-ui.js"></script>
   </body>
 </html>
