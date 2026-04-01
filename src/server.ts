@@ -3,6 +3,7 @@ import path from "path";
 import dotenv from "dotenv";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
+import connectLivereload from "connect-livereload";
 import { fileURLToPath } from "url";
 
 import indexRouter from "./routes/index.js";
@@ -21,8 +22,15 @@ const __dirname = path.dirname(__filename);
 
 const PgSession = connectPgSimple(session);
 
+app.set("view engine", "ejs");
+app.set("views", path.join(__dirname, "..", "views"));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+if (process.env.NODE_ENV !== "production") {
+  app.use(connectLivereload());
+}
 
 app.use("/", logging);
 

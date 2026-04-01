@@ -8,7 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 router.get("/", (_req, res) => {
-  res.sendFile(path.join(__dirname, "..", "..", "public", "page", "index.html"));
+  res.render("index", { title: "Gin Rummy" });
 });
 
 router.get("/about", (_req, res) => {

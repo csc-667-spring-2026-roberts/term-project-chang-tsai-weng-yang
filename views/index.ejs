@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><%= title %></title>
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <nav class="home-nav">
+      <div class="home-nav-left">
+        <span class="nav-logo">♠ Gin Rummy</span>
+        <div class="home-nav-links">
+          <a href="/">Home</a>
+          <a href="/about">About</a>
+          <a href="/rules">Rules</a>
+        </div>
+      </div>
+      <div class="home-nav-auth">
+        <div id="session-banner"></div>
+        <button id="open-login" class="auth-button" type="button">Login</button>
+        <button id="open-register" class="auth-button auth-button-register" type="button">
+          Register
+        </button>
+        <button id="logout-button" class="auth-button" type="button" hidden>Log Out</button>
+      </div>
+    </nav>
+
+    <template id="session-banner-tpl">
+      <span class="session-badge">
+        <span data-status></span>
+        <span data-email></span>
+      </span>
+    </template>
+
+    <div id="app">
+      <div id="sidebar">
+        <button id="btn-new-game">New Game</button>
+        <button id="btn-decline">Decline</button>
+        <button id="btn-sort">Sort</button>
+        <hr />
+        <p class="rule-label"><strong>How to Start:</strong></p>
+        <p class="rule-label">
+          If you don't want the faced-up card on the left, hit the <strong>Decline</strong> button.
+        </p>
+        <p class="rule-label">
+          Otherwise, click <strong>Draw Discard</strong> and discard a card from your pile.
+        </p>
+        <p class="rule-label">
+          Draw: click <strong>Draw Stock</strong> or <strong>Draw Discard</strong>.
+        </p>
+        <p class="rule-label">
+          Discard: click a card to select it, then press <strong>Discard</strong>.
+        </p>
+        <p class="rule-label">
+          Reorganize: click a card then click another — the first moves before the second.
+        </p>
+        <p class="rule-label">Knock: when <em>KNOCK?</em> appears, press <strong>Knock</strong>.</p>
+        <p class="rule-label">Game ends when a player reaches 100 points.</p>
+        <hr />
+        <div id="action-buttons">
+          <button id="btn-draw-discard">Draw Discard</button>
+          <button id="btn-draw-stock">Draw Stock</button>
+          <button id="btn-discard">Discard</button>
+          <button id="btn-knock">Knock!</button>
+          <button id="btn-layoff">Lay Off (Space)</button>
+          <button id="btn-view-scores">View Scores (S)</button>
+          <button id="btn-continue">Continue (C)</button>
+        </div>
+        <hr />
+        <section class="auth-demo-panel">
+          <h3>Auth Demo</h3>
+          <p id="auth-session-state" class="auth-demo-text">Checking session...</p>
+          <button id="check-protected-route" class="auth-demo-button" type="button">
+            Visit Protected Route
+          </button>
+          <pre id="protected-route-result" class="protected-route-result">
+Click the button to test /protected
+          </pre>
+        </section>
+      </div>
+
+      <canvas id="canvas" width="600" height="600"></canvas>
+    </div>
+
+    <div id="auth-modal" class="auth-modal" hidden>
+      <div class="auth-modal-backdrop" data-close-modal="true"></div>
+      <div class="auth-modal-panel" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+        <button class="auth-modal-close" type="button" data-close-modal="true">×</button>
+        <div class="auth-tabs">
+          <button id="login-tab" class="auth-tab active" type="button">Login</button>
+          <button id="register-tab" class="auth-tab" type="button">Register</button>
+        </div>
+
+        <section id="login-panel" class="auth-panel">
+          <div id="login-content"></div>
+        </section>
+
+        <section id="register-panel" class="auth-panel" hidden>
+          <div id="register-content"></div>
+        </section>
+      </div>
+    </div>
+
+    <script defer src="/js/main.js"></script>
+    <script type="module" src="/js/auth-ui.js"></script>
+  </body>
+</html>
