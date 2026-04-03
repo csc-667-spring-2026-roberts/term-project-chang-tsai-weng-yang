@@ -8,6 +8,8 @@ const SALT_ROUNDS = 10;
 interface AuthBody {
   email: string;
   password: string;
+  origin?: string;
+  redirectTo?: string;
 }
 
 interface ExistingUserRow {
@@ -26,16 +28,135 @@ interface LoginUserRow {
   password_hash: string;
 }
 
+interface AuthViewModel {
+  title: string;
+  error?: string;
+  email?: string;
+  redirectTo?: string;
+}
+
+function getAuthViewModel(
+  title: string,
+  viewModel: Partial<AuthViewModel> = {},
+): Required<AuthViewModel> {
+  return {
+    title,
+    error: viewModel.error ?? "",
+    email: viewModel.email ?? "",
+    redirectTo: viewModel.redirectTo ?? "",
+  };
+}
+
+function getSafeRedirectPath(path: string | undefined): string {
+  if (path === "/about" || path === "/rules" || path === "/") {
+    return path;
+  }
+
+  return "/";
+}
+
+function renderLogin(res: Response, viewModel: AuthViewModel = { title: "Login" }): void {
+  res.status(200).render("auth/login", getAuthViewModel("Login", viewModel));
+}
+
+function renderRegister(res: Response, viewModel: AuthViewModel = { title: "Register" }): void {
+  res.status(200).render("auth/register", getAuthViewModel("Register", viewModel));
+}
+
+function redirectToHomeAuth(
+  res: Response,
+  auth: "login" | "register",
+  error: string,
+  email: string,
+  redirectTo: string,
+): void {
+  const params = new URLSearchParams({
+    auth,
+    error,
+    email,
+    redirectTo,
+  });
+
+  res.redirect(`/?${params.toString()}`);
+}
+
+function handleAuthError(
+  res: Response,
+  auth: "login" | "register",
+  fromHome: boolean,
+  error: string,
+  email: string,
+  redirectTo: string,
+): void {
+  if (fromHome) {
+    redirectToHomeAuth(res, auth, error, email, redirectTo);
+    return;
+  }
+
+  if (auth === "login") {
+    renderLogin(res, {
+      title: "Login",
+      error,
+      email,
+      redirectTo,
+    });
+    return;
+  }
+
+  renderRegister(res, {
+    title: "Register",
+    error,
+    email,
+    redirectTo,
+  });
+}
+
+router.get("/login", (req: Request, res: Response): void => {
+  if (req.session.userId) {
+    res.redirect("/");
+    return;
+  }
+
+  renderLogin(res, { title: "Login" });
+});
+
+router.get("/register", (req: Request, res: Response): void => {
+  if (req.session.userId) {
+    res.redirect("/");
+    return;
+  }
+
+  renderRegister(res, { title: "Register" });
+});
+
 router.post("/register", async (req: Request<object, object, AuthBody>, res: Response) => {
   try {
     const { email, password } = req.body;
+    const fromHome = req.body.origin === "home";
+    const redirectTo = getSafeRedirectPath(req.body.redirectTo);
 
     if (!email || !password) {
-      return res.status(400).json({ message: "Email and password are required" });
+      handleAuthError(
+        res,
+        "register",
+        fromHome,
+        "Email and password are required",
+        email,
+        redirectTo,
+      );
+      return;
     }
 
     if (password.length < 6) {
-      return res.status(400).json({ message: "Password must be at least 6 characters" });
+      handleAuthError(
+        res,
+        "register",
+        fromHome,
+        "Password must be at least 6 characters",
+        email,
+        redirectTo,
+      );
+      return;
     }
 
     const existingUser = await pool.query<ExistingUserRow>(
@@ -44,7 +165,8 @@ router.post("/register", async (req: Request<object, object, AuthBody>, res: Res
     );
 
     if (existingUser.rows.length > 0) {
-      return res.status(409).json({ message: "User already exists" });
+      handleAuthError(res, "register", fromHome, "User already exists", email, redirectTo);
+      return;
     }
 
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
@@ -56,32 +178,37 @@ router.post("/register", async (req: Request<object, object, AuthBody>, res: Res
 
     const user = result.rows[0];
     if (!user) {
-      return res.status(500).json({ message: "Server error" });
+      handleAuthError(res, "register", fromHome, "Server error", email, redirectTo);
+      return;
     }
 
     req.session.userId = user.id;
     req.session.userEmail = user.email;
 
-    return res.status(201).json({
-      message: "Registration successful",
-      user: {
-        id: user.id,
-        email: user.email,
-        created_at: user.created_at,
-      },
-    });
+    res.redirect(redirectTo);
+    return;
   } catch (error) {
     console.error("Register error:", error);
-    return res.status(500).json({ message: "Server error" });
+    handleAuthError(
+      res,
+      "register",
+      req.body.origin === "home",
+      "Server error",
+      req.body.email,
+      getSafeRedirectPath(req.body.redirectTo),
+    );
   }
 });
 
 router.post("/login", async (req: Request<object, object, AuthBody>, res: Response) => {
   try {
     const { email, password } = req.body;
+    const fromHome = req.body.origin === "home";
+    const redirectTo = getSafeRedirectPath(req.body.redirectTo);
 
     if (!email || !password) {
-      return res.status(400).json({ message: "Email and password are required" });
+      handleAuthError(res, "login", fromHome, "Email and password are required", email, redirectTo);
+      return;
     }
 
     const result = await pool.query<LoginUserRow>(
@@ -90,33 +217,38 @@ router.post("/login", async (req: Request<object, object, AuthBody>, res: Respon
     );
 
     if (result.rows.length === 0) {
-      return res.status(401).json({ message: "Invalid email or password" });
+      handleAuthError(res, "login", fromHome, "Invalid email or password", email, redirectTo);
+      return;
     }
 
     const user = result.rows[0];
     if (!user) {
-      return res.status(401).json({ message: "Invalid email or password" });
+      handleAuthError(res, "login", fromHome, "Invalid email or password", email, redirectTo);
+      return;
     }
 
     const passwordMatch = await bcrypt.compare(password, user.password_hash);
 
     if (!passwordMatch) {
-      return res.status(401).json({ message: "Invalid email or password" });
+      handleAuthError(res, "login", fromHome, "Invalid email or password", email, redirectTo);
+      return;
     }
 
     req.session.userId = user.id;
     req.session.userEmail = user.email;
 
-    return res.status(200).json({
-      message: "Login successful",
-      user: {
-        id: user.id,
-        email: user.email,
-      },
-    });
+    res.redirect(redirectTo);
+    return;
   } catch (error) {
     console.error("Login error:", error);
-    return res.status(500).json({ message: "Server error" });
+    handleAuthError(
+      res,
+      "login",
+      req.body.origin === "home",
+      "Server error",
+      req.body.email,
+      getSafeRedirectPath(req.body.redirectTo),
+    );
   }
 });
 
@@ -124,26 +256,15 @@ router.post("/logout", (req: Request, res: Response): void => {
   req.session.destroy((err) => {
     if (err) {
       console.error("Logout error:", err);
-      res.status(500).json({ message: "Logout failed" });
+      renderLogin(res, {
+        title: "Login",
+        error: "Logout failed",
+      });
       return;
     }
 
     res.clearCookie("connect.sid");
-    res.status(200).json({ message: "Logout successful" });
-  });
-});
-
-router.get("/session", (req: Request, res: Response) => {
-  if (!req.session.userId || !req.session.userEmail) {
-    return res.status(200).json({ authenticated: false });
-  }
-
-  return res.status(200).json({
-    authenticated: true,
-    user: {
-      id: req.session.userId,
-      email: req.session.userEmail,
-    },
+    res.redirect("/auth/login");
   });
 });
 

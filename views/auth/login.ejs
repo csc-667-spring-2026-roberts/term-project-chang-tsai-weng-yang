@@ -1,0 +1,31 @@
+<%- include("../partials/head", { title, user: null }) %>
+<section class="card auth-card">
+  <h1>Login</h1>
+  <p class="helper-text">Sign in with your registered email and password.</p>
+  <p class="helper-text">
+    If you try visiting a protected page while logged out, you will be
+    redirected back here.
+  </p>
+
+  <% if (error) { %>
+    <div class="error-banner"><%= error %></div>
+  <% } %>
+
+  <form class="form-grid" method="post" action="/auth/login">
+    <label>
+      Email
+      <input type="email" name="email" value="<%= email || '' %>" required />
+    </label>
+    <label>
+      Password
+      <input type="password" name="password" required />
+    </label>
+    <button class="primary-button" type="submit">Login</button>
+  </form>
+
+  <p class="helper-text">
+    Need an account?
+    <a href="/auth/register">Register here</a>.
+  </p>
+</section>
+<%- include("../partials/foot") %>

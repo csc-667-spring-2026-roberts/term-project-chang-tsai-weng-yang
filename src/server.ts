@@ -21,6 +21,9 @@ const __dirname = path.dirname(__filename);
 
 const PgSession = connectPgSimple(session);
 
+app.set("views", path.join(__dirname, "..", "views"));
+app.set("view engine", "ejs");
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -50,12 +53,8 @@ app.use(express.static(path.join(__dirname, "..", "public")));
 app.use("/", indexRouter);
 app.use("/auth", authRouter);
 
-app.get("/protected", requireAuth, (req: Request, res: Response) => {
-  res.status(200).json({
-    message: "You are authorized",
-    userId: req.session.userId,
-    email: req.session.userEmail,
-  });
+app.get("/protected", requireAuth, (_req: Request, res: Response) => {
+  res.redirect("/");
 });
 
 async function startServer(): Promise<void> {

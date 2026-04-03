@@ -1,0 +1,222 @@
+<%- include("partials/head", {
+  title,
+  user,
+  showAccountButton: !user,
+  pageClass: "content--home",
+  navClass: "home-nav",
+  navLinksClass: "home-nav-links"
+}) %>
+<div id="app">
+  <div id="sidebar">
+    <% if (user) { %>
+      <section class="home-profile">
+        <img class="home-profile__avatar" src="<%= user.gravatarUrl %>" alt="Avatar for <%= user.email %>" />
+        <div class="home-profile__meta">
+          <p><strong>Email:</strong> <%= user.email %></p>
+        </div>
+      </section>
+      <hr />
+    <% } %>
+
+    <button id="btn-new-game" type="button">New Game</button>
+    <button id="btn-decline" type="button">Decline</button>
+    <button id="btn-sort" type="button">Sort</button>
+    <hr />
+    <p class="rule-label"><strong>How to Start:</strong></p>
+    <p class="rule-label">
+      If you don't want the faced-up card on the left, hit the <strong>Decline</strong> button.
+    </p>
+    <p class="rule-label">
+      Otherwise, click <strong>Draw Discard</strong> and discard a card from your pile.
+    </p>
+    <p class="rule-label">
+      Draw: click <strong>Draw Stock</strong> or <strong>Draw Discard</strong>.
+    </p>
+    <p class="rule-label">
+      Discard: click a card to select it, then press <strong>Discard</strong>.
+    </p>
+    <p class="rule-label">
+      Reorganize: click a card then click another - the first moves before the second.
+    </p>
+    <p class="rule-label">Knock: when <em>KNOCK?</em> appears, press <strong>Knock</strong>.</p>
+    <p class="rule-label">Game ends when a player reaches 100 points.</p>
+    <hr />
+    <div id="action-buttons">
+      <button id="btn-draw-discard" type="button">Draw Discard</button>
+      <button id="btn-draw-stock" type="button">Draw Stock</button>
+      <button id="btn-discard" type="button">Discard</button>
+      <button id="btn-knock" type="button">Knock!</button>
+      <button id="btn-layoff" type="button">Lay Off (Space)</button>
+      <button id="btn-view-scores" type="button">View Scores (S)</button>
+      <button id="btn-continue" type="button">Continue (C)</button>
+    </div>
+  </div>
+
+  <canvas id="canvas" width="600" height="600"></canvas>
+</div>
+
+<div id="auth-modal" class="auth-modal <%= showAuthModal ? "is-open" : "" %>">
+  <div class="auth-modal-backdrop auth-modal__backdrop" data-close-auth-modal></div>
+  <section class="auth-modal-panel auth-modal__panel" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+    <button class="auth-modal-close auth-modal__close" type="button" data-close-auth-modal aria-label="Close">
+      ×
+    </button>
+
+    <div class="auth-switcher auth-tabs">
+      <button
+        id="show-login"
+        class="auth-switcher__tab auth-tab <%= authMode === "login" ? "is-active active" : "" %>"
+        type="button"
+      >
+        Login
+      </button>
+      <button
+        id="show-register"
+        class="auth-switcher__tab auth-tab <%= authMode === "register" ? "is-active active" : "" %>"
+        type="button"
+      >
+        Register
+      </button>
+    </div>
+
+    <section id="panel-login" class="auth-panel" <%= authMode === "register" ? "hidden" : "" %>>
+      <h2>Login</h2>
+      <% if (authMode === "login" && error) { %>
+        <div class="error-banner"><%= error %></div>
+      <% } %>
+      <form class="form-grid" method="post" action="/auth/login">
+        <input type="hidden" name="origin" value="home" />
+        <input id="login-redirect-to" type="hidden" name="redirectTo" value="<%= redirectTo || "/" %>" />
+        <label>
+          Email
+          <input type="email" name="email" value="<%= authMode === "login" ? email : "" %>" required />
+        </label>
+        <label>
+          Password
+          <input type="password" name="password" required />
+        </label>
+        <button class="primary-button" type="submit">Login</button>
+      </form>
+    </section>
+
+    <section id="panel-register" class="auth-panel" <%= authMode === "login" ? "hidden" : "" %>>
+      <h2>Register</h2>
+      <% if (authMode === "register" && error) { %>
+        <div class="error-banner"><%= error %></div>
+      <% } %>
+      <form class="form-grid" method="post" action="/auth/register">
+        <input type="hidden" name="origin" value="home" />
+        <input
+          id="register-redirect-to"
+          type="hidden"
+          name="redirectTo"
+          value="<%= redirectTo || "/" %>"
+        />
+        <label>
+          Email
+          <input type="email" name="email" value="<%= authMode === "register" ? email : "" %>" required />
+        </label>
+        <label>
+          Password
+          <input type="password" name="password" minlength="6" required />
+        </label>
+        <button class="primary-button" type="submit">Register</button>
+      </form>
+    </section>
+  </section>
+</div>
+
+<script>
+  const authModal = document.getElementById("auth-modal");
+  const openLoginButton = document.getElementById("open-login");
+  const openRegisterButton = document.getElementById("open-register");
+  const closeAuthButtons = document.querySelectorAll("[data-close-auth-modal]");
+  const loginTab = document.getElementById("show-login");
+  const registerTab = document.getElementById("show-register");
+  const loginPanel = document.getElementById("panel-login");
+  const registerPanel = document.getElementById("panel-register");
+  const loginRedirectInput = document.getElementById("login-redirect-to");
+  const registerRedirectInput = document.getElementById("register-redirect-to");
+  const protectedLinks = document.querySelectorAll("[data-requires-login]");
+
+  function setAuthMode(mode) {
+    if (!loginTab || !registerTab || !loginPanel || !registerPanel) {
+      return;
+    }
+
+    loginTab.classList.toggle("is-active", mode === "login");
+    registerTab.classList.toggle("is-active", mode === "register");
+    loginPanel.hidden = mode !== "login";
+    registerPanel.hidden = mode !== "register";
+  }
+
+  function openAuthModal(mode, redirectTo) {
+    if (!authModal) {
+      return;
+    }
+
+    setAuthMode(mode);
+
+    if (loginRedirectInput) {
+      loginRedirectInput.value = redirectTo || "/";
+    }
+
+    if (registerRedirectInput) {
+      registerRedirectInput.value = redirectTo || "/";
+    }
+
+    authModal.classList.add("is-open");
+  }
+
+  function closeAuthModal() {
+    if (!authModal) {
+      return;
+    }
+
+    authModal.classList.remove("is-open");
+  }
+
+  if (openLoginButton) {
+    openLoginButton.addEventListener("click", () => {
+      openAuthModal("login", "/");
+    });
+  }
+
+  if (openRegisterButton) {
+    openRegisterButton.addEventListener("click", () => {
+      openAuthModal("register", "/");
+    });
+  }
+
+  closeAuthButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      closeAuthModal();
+    });
+  });
+
+  if (loginTab) {
+    loginTab.addEventListener("click", () => {
+      setAuthMode("login");
+    });
+  }
+
+  if (registerTab) {
+    registerTab.addEventListener("click", () => {
+      setAuthMode("register");
+    });
+  }
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeAuthModal();
+    }
+  });
+
+  protectedLinks.forEach((link) => {
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      openAuthModal("login", link.getAttribute("href") || "/");
+    });
+  });
+</script>
+<%- include("partials/foot") %>

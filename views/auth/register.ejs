@@ -1,0 +1,27 @@
+<%- include("../partials/head", { title, user: null }) %>
+<section class="card auth-card">
+  <h1>Register</h1>
+  <p class="helper-text">Create a new account. Registration will redirect you back to Home.</p>
+
+  <% if (error) { %>
+    <div class="error-banner"><%= error %></div>
+  <% } %>
+
+  <form class="form-grid" method="post" action="/auth/register">
+    <label>
+      Email
+      <input type="email" name="email" value="<%= email || '' %>" required />
+    </label>
+    <label>
+      Password
+      <input type="password" name="password" minlength="6" required />
+    </label>
+    <button class="primary-button" type="submit">Register</button>
+  </form>
+
+  <p class="helper-text">
+    Already registered?
+    <a href="/auth/login">Log in here</a>.
+  </p>
+</section>
+<%- include("../partials/foot") %>
