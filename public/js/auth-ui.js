@@ -13,6 +13,8 @@ const registerPanel = document.getElementById('register-panel');
 const loginContent = document.getElementById('login-content');
 const registerContent = document.getElementById('register-content');
 const authSessionState = document.getElementById('auth-session-state');
+const sessionBanner = document.getElementById('session-banner');
+const sessionTemplate = document.querySelector('#session-banner-tpl');
 
 async function fetchSession() {
   const response = await fetch('/auth/session', { credentials: 'same-origin' });
@@ -81,6 +83,32 @@ function updateAuthButtons(authenticated) {
   }
 }
 
+async function refreshSessionBadge() {
+  if (!(sessionBanner instanceof HTMLElement) || !(sessionTemplate instanceof HTMLTemplateElement)) {
+    return;
+  }
+
+  try {
+    const session = await fetchSession();
+    const clone = sessionTemplate.content.cloneNode(true);
+    const statusEl = clone.querySelector('[data-status]');
+    const emailEl = clone.querySelector('[data-email]');
+
+    if (statusEl instanceof HTMLElement) {
+      statusEl.textContent = session.authenticated ? 'Logged in' : 'Guest';
+      statusEl.className = session.authenticated ? 'session-dot online' : 'session-dot offline';
+    }
+
+    if (emailEl instanceof HTMLElement) {
+      emailEl.textContent = session.authenticated && session.user ? session.user.email : '';
+    }
+
+    sessionBanner.replaceChildren(clone);
+  } catch (_error) {
+    sessionBanner.textContent = '';
+  }
+}
+
 async function loadFragment(target, url) {
   if (!(target instanceof HTMLElement)) {
     return;
@@ -133,6 +161,7 @@ async function initAuthUi() {
   const loginController = attachLoginForm({
     onSuccess() {
       updateAuthButtons(true);
+      void refreshSessionBadge();
       window.setTimeout(() => {
         closeModal();
       }, 500);
@@ -143,6 +172,7 @@ async function initAuthUi() {
     onSuccess() {
       registerController.resetForm();
       updateAuthButtons(true);
+      void refreshSessionBadge();
       window.setTimeout(() => {
         closeModal();
       }, 500);
@@ -214,8 +244,10 @@ async function initAuthUi() {
       try {
         await logout();
         updateAuthButtons(false);
+        void refreshSessionBadge();
       } catch (_error) {
         updateAuthButtons(true);
+        void refreshSessionBadge();
       }
     });
   }
@@ -225,8 +257,10 @@ async function initAuthUi() {
   try {
     const session = await fetchSession();
     updateAuthButtons(Boolean(session.authenticated));
+    void refreshSessionBadge();
   } catch (_error) {
     updateAuthButtons(false);
+    void refreshSessionBadge();
   }
 }
 
