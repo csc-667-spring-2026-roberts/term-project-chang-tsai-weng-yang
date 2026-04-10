@@ -8,6 +8,7 @@ import { fileURLToPath } from "url";
 
 import indexRouter from "./routes/index.js";
 import authRouter from "./routes/auth.js";
+import sseRouter from "./routes/sse.js";
 import logging from "./middleware/logging.js";
 import { requireAuth } from "./middleware/auth.js";
 import pool, { initializeDatabase } from "./db.js";
@@ -57,6 +58,7 @@ app.use(express.static(path.join(__dirname, "..", "public")));
 
 app.use("/", indexRouter);
 app.use("/auth", authRouter);
+app.use("/api", sseRouter);
 
 app.get("/protected", requireAuth, (req: Request, res: Response) => {
   res.status(200).json({
@@ -81,4 +83,10 @@ async function startServer(): Promise<void> {
   }
 }
 
-void startServer();
+const isDirectRun = process.argv[1] === __filename;
+
+if (isDirectRun) {
+  void startServer();
+}
+
+export { app, startServer };

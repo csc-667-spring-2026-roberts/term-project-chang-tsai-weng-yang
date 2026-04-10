@@ -1,6 +1,7 @@
 import express, { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import pool from "../db.js";
+import { broadcastToRoom } from "../sse/hub.js";
 
 const router = express.Router();
 const SALT_ROUNDS = 10;
@@ -26,9 +27,47 @@ interface LoginUserRow {
   password_hash: string;
 }
 
-router.post("/register", async (req: Request<object, object, AuthBody>, res: Response) => {
+function sessionRoomId(req: Request): string | null {
+  return req.sessionID ? `session:${req.sessionID}` : null;
+}
+
+function pushSessionUpdate(req: Request): void {
+  const roomId = sessionRoomId(req);
+  if (!roomId) {
+    return;
+  }
+
+  broadcastToRoom(roomId, {
+    event: "session:update",
+    data: {
+      authenticated: Boolean(req.session.userId && req.session.userEmail),
+      user:
+        req.session.userId && req.session.userEmail
+          ? {
+              id: req.session.userId,
+              email: req.session.userEmail,
+            }
+          : null,
+    },
+  });
+}
+
+function saveSession(req: Request): Promise<void> {
+  return new Promise((resolve, reject) => {
+    req.session.save((error) => {
+      if (error) {
+        reject(error instanceof Error ? error : new Error(String(error)));
+        return;
+      }
+
+      resolve();
+    });
+  });
+}
+
+router.post("/register", async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body as AuthBody;
 
     if (!email || !password) {
       return res.status(400).json({ message: "Email and password are required" });
@@ -62,6 +101,9 @@ router.post("/register", async (req: Request<object, object, AuthBody>, res: Res
     req.session.userId = user.id;
     req.session.userEmail = user.email;
 
+    await saveSession(req);
+    pushSessionUpdate(req);
+
     return res.status(201).json({
       message: "Registration successful",
       user: {
@@ -76,9 +118,9 @@ router.post("/register", async (req: Request<object, object, AuthBody>, res: Res
   }
 });
 
-router.post("/login", async (req: Request<object, object, AuthBody>, res: Response) => {
+router.post("/login", async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body as AuthBody;
 
     if (!email || !password) {
       return res.status(400).json({ message: "Email and password are required" });
@@ -107,6 +149,9 @@ router.post("/login", async (req: Request<object, object, AuthBody>, res: Respon
     req.session.userId = user.id;
     req.session.userEmail = user.email;
 
+    await saveSession(req);
+    pushSessionUpdate(req);
+
     return res.status(200).json({
       message: "Login successful",
       user: {
@@ -121,6 +166,8 @@ router.post("/login", async (req: Request<object, object, AuthBody>, res: Respon
 });
 
 router.post("/logout", (req: Request, res: Response): void => {
+  const roomId = sessionRoomId(req);
+
   req.session.destroy((err) => {
     if (err) {
       console.error("Logout error:", err);
@@ -129,6 +176,15 @@ router.post("/logout", (req: Request, res: Response): void => {
     }
 
     res.clearCookie("connect.sid");
+    if (roomId) {
+      broadcastToRoom(roomId, {
+        event: "session:update",
+        data: {
+          authenticated: false,
+          user: null,
+        },
+      });
+    }
     res.status(200).json({ message: "Logout successful" });
   });
 });

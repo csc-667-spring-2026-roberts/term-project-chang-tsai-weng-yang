@@ -94,10 +94,40 @@ nav a:hover {
   color: var(--text);
 }
 
+.home-nav-links a[aria-current='page'] {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
 .home-nav-auth {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.static-nav-right {
+  display: flex;
+  align-items: center;
+}
+
+.nav-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--blue);
+  color: #fff;
+  background: var(--blue);
+  border-radius: var(--radius);
+  padding: 7px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.nav-cta:hover {
+  color: #fff;
+  background: var(--blue-hover);
+  border-color: var(--blue-hover);
 }
 
 /* ─── Auth Buttons ──────────────────────────────────────────────────────────── */
@@ -471,6 +501,134 @@ nav a:hover {
   border: 1px solid var(--border);
 }
 
+/* ─── Rules Page ────────────────────────────────────────────────────────────── */
+.rules-page {
+  width: min(980px, calc(100% - 32px));
+  margin: 28px auto 40px;
+  display: grid;
+  gap: 14px;
+}
+
+.rules-hero {
+  background: linear-gradient(135deg, rgba(201, 162, 39, 0.12), rgba(58, 123, 213, 0.1));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px 24px 22px;
+}
+
+.rules-hero h1 {
+  margin: 0 0 10px;
+  font-size: clamp(1.6rem, 2.6vw, 2.1rem);
+  color: var(--text);
+}
+
+.rules-hero p {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.65;
+}
+
+.rules-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+}
+
+.rules-card h2 {
+  margin: 0 0 10px;
+  font-size: 1.1rem;
+  color: var(--accent);
+}
+
+.rules-card h3 {
+  margin: 12px 0 6px;
+  font-size: 0.96rem;
+  color: var(--text);
+}
+
+.rules-card p {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.7;
+}
+
+.rules-card ul,
+.rules-card ol {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.rules-card li {
+  color: var(--text);
+}
+
+.rules-note {
+  margin-top: 10px !important;
+  color: var(--text-muted) !important;
+  font-size: 0.92rem;
+}
+
+.rules-image {
+  margin: 12px 0 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.rules-image img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.rules-image figcaption {
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+}
+
+.rules-points-table {
+  width: 100%;
+  margin-top: 12px;
+  border-collapse: collapse;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.rules-points-table thead {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.rules-points-table th,
+.rules-points-table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.rules-points-table th {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.rules-points-table td {
+  color: var(--text);
+}
+
+.rules-points-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
 /* ─── Scrollbar ─────────────────────────────────────────────────────────────── */
 #sidebar::-webkit-scrollbar {
   width: 4px;
@@ -508,6 +666,21 @@ nav a:hover {
   .home-nav-auth {
     width: 100%;
     justify-content: flex-end;
+  }
+
+  .static-nav-right {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .rules-page {
+    width: calc(100% - 20px);
+    margin: 16px auto 26px;
+  }
+
+  .rules-hero,
+  .rules-card {
+    padding: 14px 14px 15px;
   }
 
   #app {
