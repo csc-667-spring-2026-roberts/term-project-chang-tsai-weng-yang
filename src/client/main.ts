@@ -108,6 +108,21 @@ function connectSessionStream(): void {
       });
     });
 
+    source.addEventListener("demo:update", (event: MessageEvent<string>) => {
+      const el = document.querySelector<HTMLElement>("#sse-demo-last");
+      if (!el) {
+        return;
+      }
+      try {
+        const payload = JSON.parse(event.data) as { message?: unknown };
+        const msg =
+          typeof payload.message === "string" ? payload.message : String(event.data);
+        el.textContent = `${new Date().toLocaleTimeString()}: ${msg}`;
+      } catch {
+        el.textContent = event.data;
+      }
+    });
+
     source.onerror = (): void => {
       if (source) {
         source.close();

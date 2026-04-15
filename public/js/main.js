@@ -82,6 +82,19 @@
           user: parsed.user ?? null
         });
       });
+      source.addEventListener("demo:update", (event) => {
+        const el = document.querySelector("#sse-demo-last");
+        if (!el) {
+          return;
+        }
+        try {
+          const payload = JSON.parse(event.data);
+          const msg = typeof payload.message === "string" ? payload.message : String(event.data);
+          el.textContent = `${(/* @__PURE__ */ new Date()).toLocaleTimeString()}: ${msg}`;
+        } catch {
+          el.textContent = event.data;
+        }
+      });
       source.onerror = () => {
         if (source) {
           source.close();
