@@ -18,6 +18,7 @@
       </div>
       <div class="home-nav-auth">
         <div id="session-banner"></div>
+        <a href="/profile" class="auth-button profile-link" id="profile-link" hidden>Profile</a>
         <button id="open-login" class="auth-button" type="button">Login</button>
         <button id="open-register" class="auth-button auth-button-register" type="button">
           Register
@@ -34,6 +35,7 @@
     </template>
 
     <div id="app">
+      <button id="btn-leave-game" class="leave-button" hidden title="Leave Game">Leave</button>
       <div id="sidebar">
         <button id="btn-new-game">New Game</button>
         <button id="btn-decline">Decline</button>
@@ -106,7 +108,75 @@ Click the button to test /protected
       </div>
     </div>
 
+    <div id="game-room-modal" class="game-room-modal" hidden>
+      <div class="game-room-backdrop" data-close-modal="true"></div>
+      <div
+        class="game-room-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="game-room-title"
+      >
+        <button class="game-room-close" type="button" data-close-modal="true">×</button>
+        <h2 id="game-room-title">Find a Game</h2>
+
+        <div class="game-room-tabs">
+          <button id="tab-join" class="game-room-tab active" type="button">Join Game</button>
+          <button id="tab-create" class="game-room-tab" type="button">Create Room</button>
+          <button id="tab-waiting" class="game-room-tab" type="button">Waiting for Match</button>
+        </div>
+
+        <!-- Tab 1: Join Game by Room ID -->
+        <section id="panel-join" class="game-room-panel-content active">
+          <h3>Join Game by Room ID</h3>
+          <div class="game-room-form">
+            <input
+              id="input-room-id"
+              type="text"
+              placeholder="Enter Room ID (e.g., ABC123)"
+              maxlength="8"
+            />
+            <button id="btn-join-room" type="button" class="game-room-action-btn">Join</button>
+          </div>
+          <div id="join-error" class="game-room-error" hidden></div>
+          <div id="join-loading" class="game-room-loading" hidden>Joining room...</div>
+        </section>
+
+        <!-- Tab 2: Create Room -->
+        <section id="panel-create" class="game-room-panel-content">
+          <h3>Create a New Room</h3>
+          <p class="game-room-info">You'll get a Room ID to share with another player.</p>
+          <button id="btn-create-room" type="button" class="game-room-action-btn">
+            Create Room
+          </button>
+          <div id="create-error" class="game-room-error" hidden></div>
+          <div id="create-loading" class="game-room-loading" hidden>Creating room...</div>
+          <div id="create-success" class="game-room-success" hidden>
+            <p>Room Created!</p>
+            <p>Your Room ID: <strong id="room-id-display"></strong></p>
+            <p class="game-room-info">Share this ID with another player to start a game.</p>
+            <div class="game-room-waiting-indicator">
+              <div class="game-room-spinner"></div>
+              <p>Waiting for opponent...</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 3: Waiting for Match -->
+        <section id="panel-waiting" class="game-room-panel-content">
+          <h3>Waiting for Match</h3>
+          <p class="game-room-info">We're looking for an opponent for you...</p>
+          <div class="game-room-waiting-indicator">
+            <div class="game-room-spinner"></div>
+            <p>Matching you with a player...</p>
+          </div>
+          <button id="btn-cancel-wait" type="button" class="game-room-cancel-btn">Cancel</button>
+        </section>
+      </div>
+    </div>
+
     <script defer src="/js/main.js"></script>
     <script type="module" src="/js/auth-ui.js"></script>
+    <script type="module" src="/js/game-room.js"></script>
+    <script type="module" src="/js/game-init.js"></script>
   </body>
 </html>

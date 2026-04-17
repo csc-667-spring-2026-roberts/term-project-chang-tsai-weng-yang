@@ -19,6 +19,10 @@ router.get("/rules", (_req, res) => {
   res.sendFile(path.join(__dirname, "..", "..", "public", "page", "rules.html"));
 });
 
+router.get("/profile", (_req, res) => {
+  res.sendFile(path.join(__dirname, "..", "..", "public", "page", "profile.html"));
+});
+
 router.get("/:id", (req, res) => {
   const { id } = req.params;
   res.send(id);
