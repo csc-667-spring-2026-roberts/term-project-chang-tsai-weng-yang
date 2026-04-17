@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc && npm run build:client",
     "build:client": "esbuild src/client/main.ts --bundle --outdir=public/js --platform=browser --format=iife",
-    "start": "node dist/server.js",
+    "start": "npm run migrate && tsx src/server.ts",
     "dev": "concurrently --names \"server,client,reload\" --prefix-colors \"cyan,yellow,green\" \"npm:watch:server\" \"npm:watch:client\" \"npm:watch:reload\"",
     "watch:server": "NODE_ENV=development nodemon --watch src --ignore src/client --exec tsx src/server.ts",
     "watch:client": "esbuild src/client/main.ts --bundle --outdir=public/js --platform=browser --format=iife --watch",
@@ -19,7 +19,8 @@
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
     "clean": "rm -rf dist/",
-    "prepare": "husky"
+    "prepare": "husky",
+    "migrate": "node ./database/migration.js"
   },
   "lint-staged": {
     "src/**/*.ts": [
@@ -51,7 +52,7 @@
     "nodemon": "^3.1.14",
     "prettier": "^3.2.0",
     "supertest": "^7.2.2",
-    "tsx": "^4.7.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.4.0",
     "typescript-eslint": "^8.0.0"
   },
@@ -59,10 +60,11 @@
     "bcrypt": "^6.0.0",
     "connect-livereload": "^0.6.1",
     "connect-pg-simple": "^10.0.0",
-    "dotenv": "^17.3.1",
+    "dotenv": "^17.4.2",
     "ejs": "^5.0.1",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
-    "pg": "^8.20.0"
+    "pg": "^8.20.0",
+    "pg-promise": "^12.6.2"
   }
 }
