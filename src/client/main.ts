@@ -108,20 +108,6 @@ function connectSessionStream(): void {
       });
     });
 
-    source.addEventListener("demo:update", (event: MessageEvent<string>) => {
-      const el = document.querySelector<HTMLElement>("#sse-demo-last");
-      if (!el) {
-        return;
-      }
-      try {
-        const payload = JSON.parse(event.data) as { message?: unknown };
-        const msg =
-          typeof payload.message === "string" ? payload.message : String(event.data);
-        el.textContent = `${new Date().toLocaleTimeString()}: ${msg}`;
-      } catch {
-        el.textContent = event.data;
-      }
-    });
 
     source.onerror = (): void => {
       if (source) {
@@ -134,6 +120,104 @@ function connectSessionStream(): void {
   open();
 }
 
+type LogKind = "info" | "event" | "error";
+
+let demoSource: EventSource | null = null;
+
+function appendDemoLog(text: string, kind: LogKind = "info"): void {
+  const logEl = document.querySelector<HTMLElement>("#sse-message-log");
+  if (!logEl) return;
+  logEl.querySelector(".sse-placeholder")?.remove();
+
+  const line = document.createElement("div");
+  line.className = `sse-log-line sse-log-${kind}`;
+  line.textContent = `${new Date().toLocaleTimeString()}  ${text}`;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function renderRoomBadges(rooms: string[]): void {
+  const badgesEl = document.querySelector<HTMLElement>("#sse-room-badges");
+  if (!badgesEl) return;
+  badgesEl.innerHTML = "";
+  for (const room of rooms) {
+    const badge = document.createElement("span");
+    badge.className = "sse-badge";
+    badge.textContent = room;
+    badgesEl.appendChild(badge);
+  }
+}
+
+function setConnectBtnState(label: string, disabled: boolean): void {
+  const btn = document.querySelector<HTMLButtonElement>("#sse-room-connect");
+  if (!btn) return;
+  btn.textContent = label;
+  btn.disabled = disabled;
+}
+
+function connectDemoStream(channels: string): void {
+  demoSource?.close();
+  setConnectBtnState("Connecting…", true);
+
+  const source = new EventSource(`/api/sse?channels=${encodeURIComponent(channels)}`);
+  demoSource = source;
+
+  source.addEventListener("connected", (ev: MessageEvent<string>) => {
+    const payload = JSON.parse(ev.data) as { rooms: string[] };
+    renderRoomBadges(payload.rooms);
+    appendDemoLog(`Connected · rooms: [${payload.rooms.join(", ")}]`);
+    setConnectBtnState("Reconnect", false);
+  });
+
+  source.addEventListener("demo:update", (ev: MessageEvent<string>) => {
+    const payload = JSON.parse(ev.data) as { message?: string };
+    appendDemoLog(`demo:update  →  ${payload.message ?? ev.data}`, "event");
+  });
+
+  source.onerror = (): void => {
+    appendDemoLog("Connection lost — reconnecting…", "error");
+    setConnectBtnState("Reconnect", false);
+  };
+}
+
+async function sendDemoBroadcast(rooms: string[], message: string): Promise<void> {
+  try {
+    const res = await fetch("/api/events/broadcast", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rooms, event: "demo:update", data: { message } }),
+    });
+    const body = (await res.json()) as { delivered: number };
+    appendDemoLog(`Sent to [${rooms.join(", ")}] → delivered to ${String(body.delivered)} subscriber(s)`);
+  } catch {
+    appendDemoLog("Broadcast failed", "error");
+  }
+}
+
+function initSseDemoPanel(): void {
+  const roomInput = document.querySelector<HTMLInputElement>("#sse-room-input");
+  const connectBtn = document.querySelector<HTMLButtonElement>("#sse-room-connect");
+  const broadcastRoomsInput = document.querySelector<HTMLInputElement>("#sse-broadcast-rooms");
+  const broadcastMsgInput = document.querySelector<HTMLInputElement>("#sse-broadcast-msg");
+  const broadcastSendBtn = document.querySelector<HTMLButtonElement>("#sse-broadcast-send");
+
+  if (!roomInput || !connectBtn || !broadcastRoomsInput || !broadcastMsgInput || !broadcastSendBtn) {
+    return;
+  }
+
+  connectBtn.addEventListener("click", () => {
+    connectDemoStream(roomInput.value.trim() || "global");
+  });
+
+  broadcastSendBtn.addEventListener("click", () => {
+    const rooms = broadcastRoomsInput.value.split(",").map((r) => r.trim()).filter(Boolean);
+    const message = broadcastMsgInput.value.trim() || "Hello!";
+    void sendDemoBroadcast(rooms, message);
+  });
+
+  connectDemoStream("global");
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   subscribeSession((current) => {
     renderSessionBanner(current);
@@ -144,4 +228,5 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   connectSessionStream();
+  initSseDemoPanel();
 });

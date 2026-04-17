@@ -260,6 +260,128 @@ nav a:hover {
   flex: 1;
 }
 
+/* ─── SSE Channel Demo Panel ────────────────────────────────────────────────── */
+.sse-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sse-field-label {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  margin-top: 4px;
+  text-transform: uppercase;
+}
+
+.sse-input {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.75rem;
+  outline: none;
+  padding: 6px 9px;
+  transition: border-color 0.2s;
+  width: 100%;
+}
+
+.sse-input:focus {
+  border-color: var(--accent);
+}
+
+.sse-btn {
+  background: linear-gradient(135deg, #1e3a5f, #2a5298);
+  border: 0;
+  border-radius: var(--radius);
+  color: #a8c8f8;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 7px 12px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.sse-btn--full {
+  width: 100%;
+}
+
+.sse-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2a5298, #3a6bc0);
+  color: #d0e8ff;
+}
+
+.sse-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.sse-btn--send {
+  background: linear-gradient(135deg, #1a5c35, #217a44);
+  color: #a0f0c0;
+}
+
+.sse-btn--send:hover:not(:disabled) {
+  background: linear-gradient(135deg, #217a44, #2a9957);
+  color: #ccffdd;
+}
+
+.sse-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 0;
+  min-height: 20px;
+}
+
+.sse-badge {
+  background: rgba(201, 162, 39, 0.18);
+  border: 1px solid rgba(201, 162, 39, 0.45);
+  border-radius: 20px;
+  color: var(--accent);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 2px 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sse-log {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: 'Courier New', monospace;
+  font-size: 0.68rem;
+  height: 110px;
+  overflow-y: auto;
+  padding: 6px 8px;
+  scrollbar-color: var(--border) transparent;
+  scrollbar-width: thin;
+}
+
+.sse-placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.sse-log-line {
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.sse-log-info  { color: var(--text-muted); }
+.sse-log-event { color: #6fcf97; }
+.sse-log-error { color: var(--red); }
+
 /* ─── Auth Demo Panel ───────────────────────────────────────────────────────── */
 .auth-demo-panel {
   margin-top: 8px;

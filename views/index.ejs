@@ -68,9 +68,29 @@
           <button id="btn-continue">Continue (C)</button>
         </div>
         <hr />
-        <section class="auth-demo-panel">
-          <h3>SSE fan-out demo</h3>
-          <pre id="sse-demo-last" class="protected-route-result">(waiting for demo:update…)</pre>
+        <section class="auth-demo-panel sse-panel">
+          <h3>SSE Channel Demo</h3>
+
+          <label class="sse-field-label">Subscribe to rooms</label>
+          <input id="sse-room-input" class="sse-input" type="text"
+                 placeholder="e.g. roomA,roomB" value="global" />
+          <button id="sse-room-connect" class="sse-btn sse-btn--full" type="button">Connect</button>
+
+          <div id="sse-room-badges" class="sse-badge-row"></div>
+
+          <div id="sse-message-log" class="sse-log">
+            <span class="sse-placeholder">— waiting for events —</span>
+          </div>
+
+          <label class="sse-field-label">Broadcast to rooms</label>
+          <input id="sse-broadcast-rooms" class="sse-input" type="text"
+                 placeholder="e.g. global,roomA" value="global" />
+
+          <label class="sse-field-label">Message</label>
+          <input id="sse-broadcast-msg" class="sse-input" type="text"
+                 placeholder="message text" value="Hello!" />
+
+          <button id="sse-broadcast-send" class="sse-btn sse-btn--send sse-btn--full" type="button">Send Broadcast</button>
         </section>
         <section class="auth-demo-panel">
           <h3>Auth Demo</h3>
