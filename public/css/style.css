@@ -253,11 +253,316 @@ nav a:hover {
   color: #a0f0c0 !important;
 }
 
-/* ─── Canvas ────────────────────────────────────────────────────────────────── */
-#canvas {
-  display: block;
-  background: radial-gradient(ellipse at center, #1a4a2e 0%, #0d2e1a 100%);
+/* ─── Game Table ────────────────────────────────────────────────────────────── */
+.game-table {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(ellipse at center, #1a4a2e 0%, #0d2e1a 100%);
+  padding: 18px 24px;
+  overflow: auto;
+  position: relative;
+}
+
+.table-empty {
+  margin: auto;
+  text-align: center;
+  color: var(--text);
+}
+
+.table-empty h2 {
+  font-size: 2rem;
+  color: var(--accent);
+  margin: 0 0 12px;
+}
+
+.table-empty p {
+  color: var(--text-muted);
+}
+
+.table-game {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 100%;
+}
+
+.table-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 14px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.table-header .table-turn {
+  margin-left: auto;
+}
+
+.table-header strong {
+  color: var(--accent);
+  letter-spacing: 0.05em;
+}
+
+.table-turn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.turn-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.6);
+  transition: background 0.2s;
+}
+
+.turn-dot.your-turn {
+  background: var(--green);
+  animation: turn-pulse 1.6s ease-out infinite;
+}
+
+@keyframes turn-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(46, 204, 113, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(46, 204, 113, 0);
+  }
+}
+
+.table-opponent,
+.table-self {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.table-self {
+  margin-top: auto;
+}
+
+.player-label {
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.table-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  padding: 16px 0;
+}
+
+/* ─── Piles ─────────────────────────────────────────────────────────────────── */
+.pile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.pile.disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.pile-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pile-label span {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.pile-card {
+  width: 70px;
+  height: 100px;
+  border-radius: 8px;
+  background: #fdfdfd;
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  position: relative;
+  transition: transform 0.15s ease;
+}
+
+.pile:not(.disabled):hover .pile-card {
+  transform: translateY(-3px);
+}
+
+.pile-card.empty {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px dashed rgba(255, 255, 255, 0.25);
+  box-shadow: none;
+}
+
+/* Card "back" pattern, shared with opponent hand */
+.pile-card-back,
+.card.back {
+  background:
+    repeating-linear-gradient(45deg, #1f3b6e 0 6px, #2d4f8a 6px 12px);
+  border: 1px solid #0c1d3d;
+}
+
+/* ─── Cards ─────────────────────────────────────────────────────────────────── */
+.hand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 110px;
+}
+
+.card {
+  width: 64px;
+  height: 92px;
+  border-radius: 8px;
+  background: #fdfdfd;
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 6px 7px;
+  font-family: 'Georgia', 'Times New Roman', serif;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s;
+  position: relative;
+}
+
+.card:not(.back).disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.card:not(.disabled):not(.back):hover {
+  transform: translateY(-6px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+}
+
+.card.selected {
+  transform: translateY(-12px);
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 8px 18px rgba(0, 0, 0, 0.55);
+}
+
+.card .card-rank {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.card .card-suit {
+  font-size: 1.4rem;
+  text-align: right;
+  line-height: 1;
+}
+
+.card.suit-H,
+.card.suit-D {
+  color: #d62828;
+}
+
+.card.suit-S,
+.card.suit-C {
+  color: #111;
+}
+
+/* Compact, face-down opponent cards */
+.card.back {
+  width: 44px;
+  height: 64px;
+  cursor: default;
+}
+
+.card.back:hover {
+  transform: none;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
+}
+
+.opponent-hand {
+  min-height: 70px;
+}
+
+/* ─── Sidebar action button states ──────────────────────────────────────────── */
+#sidebar button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
+#sidebar button:disabled:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
+/* ─── Floating message bar ──────────────────────────────────────────────────── */
+.table-message {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--text);
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  border: 1px solid var(--border);
+  pointer-events: none;
+  animation: msg-fade 3s ease-in forwards;
+}
+
+@keyframes msg-fade {
+  0% { opacity: 0; transform: translate(-50%, 6px); }
+  10% { opacity: 1; transform: translate(-50%, 0); }
+  85% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@media (max-width: 700px) {
+  .game-table {
+    padding: 12px;
+  }
+  .pile-card {
+    width: 60px;
+    height: 86px;
+  }
+  .card {
+    width: 52px;
+    height: 78px;
+    padding: 4px 5px;
+  }
+  .card .card-suit {
+    font-size: 1.1rem;
+  }
 }
 
 /* ─── Auth Demo Panel ───────────────────────────────────────────────────────── */
@@ -980,30 +1285,30 @@ nav a:hover {
   }
 }
 
-/* ─── Leave Button ─────────────────────────────────────────────────────────── */
-.leave-button {
-  position: fixed;
-  top: 70px;
-  right: 16px;
-  padding: 8px 16px;
+/* ─── Leave Button (lives inside the HUD bar) ──────────────────────────────── */
+.hud-leave-btn {
+  padding: 6px 14px;
   background: var(--red);
   color: white;
   border: none;
   border-radius: var(--radius);
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   cursor: pointer;
-  z-index: 500;
-  transition: background 0.2s, transform 0.2s;
+  transition: background 0.15s, transform 0.1s;
+  flex-shrink: 0;
 }
 
-.leave-button:hover {
+.hud-leave-btn:hover {
   background: #c0392b;
-  transform: scale(1.05);
 }
 
-.leave-button:active {
-  transform: scale(0.98);
+.hud-leave-btn:active {
+  transform: scale(0.97);
+}
+
+.hud-leave-btn[hidden] {
+  display: none;
 }
 
 /* ─── Profile Styles ────────────────────────────────────────────────────────── */

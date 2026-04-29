@@ -48,6 +48,20 @@ CREATE TABLE IF NOT EXISTS game_cards (
     CONSTRAINT valid_location CHECK (location IN ('deck', 'discard', 'hand'))
 );
 
+-- CARDS LOOKUP TABLE: the static, immutable definition of all 52
+-- standard playing cards. Seeded once by database/migration.js and never
+-- written to at runtime. game_cards is the junction table that maps a
+-- card's *position* (deck/hand/discard, owner, order) per active room.
+CREATE TABLE IF NOT EXISTS cards (
+    id SERIAL PRIMARY KEY,
+    suit VARCHAR(10) NOT NULL,         -- 'HEARTS', 'DIAMONDS', 'CLUBS', 'SPADES'
+    rank VARCHAR(2)  NOT NULL,         -- 'A', '2', ..., '10', 'J', 'Q', 'K'
+    rank_value INT   NOT NULL,         -- 1..13, used for melding/scoring
+    color VARCHAR(5) NOT NULL,         -- 'RED' or 'BLACK'
+    CONSTRAINT cards_unique UNIQUE (suit, rank),
+    CONSTRAINT cards_valid_color CHECK (color IN ('RED', 'BLACK'))
+);
+
 -- Indexing for production performance on Render
 CREATE INDEX IF NOT EXISTS idx_game_cards_room ON game_cards(room_id);
 CREATE INDEX IF NOT EXISTS idx_game_cards_location ON game_cards(location);

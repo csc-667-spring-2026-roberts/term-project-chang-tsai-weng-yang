@@ -279,6 +279,59 @@ router.post("/rooms/:roomId/cancel", requireAuth, async (req: Request, res: Resp
   }
 });
 
+// Leave an in-progress (or any) game. Either participant can call this.
+// Marks the room cancelled and broadcasts game:room_cancelled so the
+// other player's client can tear down its game view in real time.
+router.post("/rooms/:roomId/leave", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const roomId = req.params.roomId;
+    if (!roomId || typeof roomId !== "string") {
+      return res.status(400).json({ message: "Invalid room ID" });
+    }
+    const roomIdUpper = roomId.toUpperCase();
+
+    const result = await pool.query<GameRoom>(
+      `UPDATE game_rooms
+         SET status = 'cancelled'
+       WHERE id = $1
+         AND (created_by = $2 OR player_2_id = $2)
+         AND status <> 'cancelled'
+       RETURNING *`,
+      [roomIdUpper, userId],
+    );
+
+    const room = result.rows[0];
+    if (!room) {
+      return res
+        .status(400)
+        .json({ message: "Room not found, already cancelled, or you're not in it." });
+    }
+
+    broadcastToRoom(`game:room:${roomIdUpper}`, {
+      event: "game:room_cancelled",
+      data: {
+        roomId: room.id,
+        leftBy: userId,
+      },
+    });
+
+    broadcastToRoom("game:waiting", {
+      event: "game:room_removed",
+      data: { roomId: room.id },
+    });
+
+    return res.status(200).json(room);
+  } catch (error) {
+    console.error("Error leaving room:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
 router.post("/rooms/:roomId/start", requireAuth, async (req: Request, res: Response) => {
   const { roomId } = req.params;
   const userId = getUserId(req);
@@ -393,6 +446,52 @@ router.post("/rooms/:roomId/draw", requireAuth, async (req: Request, res: Respon
   }
 });
 
+// DRAW the top card from the discard pile
+router.post("/rooms/:roomId/draw-discard", requireAuth, async (req: Request, res: Response) => {
+  const { roomId } = req.params;
+  const userId = getUserId(req);
+
+  if (!roomId || typeof roomId !== "string") {
+    return res.status(400).json({ message: "Invalid room ID" });
+  }
+
+  const roomIdUpper = roomId.toUpperCase();
+
+  const stateRes = await pool.query<GameState>(
+    "SELECT turn_user_id FROM game_state WHERE room_id = $1",
+    [roomIdUpper],
+  );
+  if (stateRes.rows[0]?.turn_user_id !== userId) {
+    return res.status(403).json({ message: "Not your turn!" });
+  }
+
+  try {
+    // Top of discard = highest card_order in the discard pile
+    const topCard = await pool.query<GameCard>(
+      "SELECT id FROM game_cards WHERE room_id = $1 AND location = 'discard' ORDER BY card_order DESC LIMIT 1",
+      [roomIdUpper],
+    );
+
+    if (topCard.rowCount === 0) {
+      return res.status(400).json({ message: "Discard pile empty" });
+    }
+
+    await pool.query("UPDATE game_cards SET location = 'hand', player_id = $1 WHERE id = $2", [
+      userId,
+      topCard.rows[0].id,
+    ]);
+
+    broadcastToRoom(`game:room:${roomIdUpper}`, {
+      event: "game:update",
+      data: { action: "draw-discard" },
+    });
+    res.json({ success: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Draw from discard failed" });
+  }
+});
+
 // DISCARD (Play) a card from hand
 router.post("/rooms/:roomId/discard", requireAuth, async (req: Request, res: Response) => {
   const { roomId } = req.params;
@@ -413,8 +512,17 @@ router.post("/rooms/:roomId/discard", requireAuth, async (req: Request, res: Res
   }
 
   try {
+    // Place the discarded card on TOP of the discard pile by giving it
+    // the highest card_order in this room. That way "top of discard"
+    // queries (ORDER BY card_order DESC) always return the most recently
+    // discarded card — important for the Draw-Discard action.
     const result = await pool.query(
-      "UPDATE game_cards SET location = 'discard', player_id = NULL WHERE id = $1 AND room_id = $2 AND player_id = $3 RETURNING *",
+      `UPDATE game_cards
+         SET location = 'discard',
+             player_id = NULL,
+             card_order = COALESCE((SELECT MAX(card_order) + 1 FROM game_cards WHERE room_id = $2), 0)
+       WHERE id = $1 AND room_id = $2 AND player_id = $3
+       RETURNING *`,
       [cardId, roomIdUpper, userId],
     );
 
@@ -450,7 +558,7 @@ router.get("/rooms/:roomId/state", requireAuth, async (req: Request, res: Respon
 
   try {
     const cards = await pool.query<GameCard>(
-      "SELECT id, suit, rank, location, player_id FROM game_cards WHERE room_id = $1",
+      "SELECT id, suit, rank, location, player_id, card_order FROM game_cards WHERE room_id = $1",
       [roomIdUpper],
     );
     const state = await pool.query<GameState>(
