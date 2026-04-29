@@ -1,3 +1,4 @@
+-- SESSION TABLE: Required for Render persistence across deploys
 CREATE TABLE IF NOT EXISTS "session" (
   "sid" varchar NOT NULL COLLATE "default",
   "sess" json NOT NULL,
@@ -6,60 +7,47 @@ CREATE TABLE IF NOT EXISTS "session" (
 );
 CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
 
-
+-- USERS TABLE: Basic authentication
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    password_hash VARCHAR(255) NOT NULL,
+    nickname VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS cards (
-    id SERIAL PRIMARY KEY,
-    suit VARCHAR(10) NOT NULL,    -- 'HEARTS', 'DIAMONDS', etc.
-    rank VARCHAR(5) NOT NULL,     -- 'A', '2', 'K', etc.
-    rank_value INTEGER NOT NULL,  -- 1 for Ace, 13 for King
-    color VARCHAR(10) NOT NULL    -- 'RED' or 'BLACK'
+-- GAME ROOMS: Manages the lobby and player matching
+CREATE TABLE IF NOT EXISTS game_rooms (
+    id VARCHAR(8) PRIMARY KEY,
+    created_by INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    player_2_id INT REFERENCES users(id) ON DELETE CASCADE,
+    status VARCHAR(50) DEFAULT 'waiting',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    matched_at TIMESTAMP,
+    -- 'completed' is often used as the 'active' state in the routes
+    CONSTRAINT valid_status CHECK (status IN ('waiting', 'matched', 'completed', 'cancelled'))
 );
 
-
-CREATE TABLE IF NOT EXISTS games (
-    id SERIAL PRIMARY KEY,
-    status VARCHAR(20) NOT NULL DEFAULT 'LOBBY' CHECK (status IN ('LOBBY', 'IN_PROGRESS', 'COMPLETED')),
-    turn_player_id INTEGER REFERENCES users(id),
-    turn_phase VARCHAR(20) NOT NULL DEFAULT 'DRAW' CHECK (turn_phase IN ('DRAW', 'DISCARD')),
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+-- GAME STATE: Tracks whose turn it is
+CREATE TABLE IF NOT EXISTS game_state (
+    room_id VARCHAR(8) PRIMARY KEY REFERENCES game_rooms(id) ON DELETE CASCADE,
+    turn_user_id INT REFERENCES users(id),
+    last_action_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-
-CREATE TABLE IF NOT EXISTS game_users (
-    game_id INTEGER REFERENCES games(id) ON DELETE CASCADE,
-    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    seat_number INTEGER NOT NULL CHECK (seat_number IN (0, 1)),
-    PRIMARY KEY (game_id, user_id),
-    UNIQUE (game_id, seat_number)
-);
-
-
+-- GAME CARDS: Junction table tracking every card's location
+-- This replaces JSON columns to satisfy the "no JSON for game state" rule
 CREATE TABLE IF NOT EXISTS game_cards (
     id SERIAL PRIMARY KEY,
-    game_id INTEGER REFERENCES games(id) ON DELETE CASCADE,
-    card_id INTEGER REFERENCES cards(id),
-    location VARCHAR(20) NOT NULL,  -- 'DECK', 'DISCARD', 'PLAYER_0_HAND', 'PLAYER_1_HAND'
-    user_id INTEGER REFERENCES users(id), -- Specific hand ownership
-    card_order INTEGER NOT NULL,   -- Crucial for the Fisher-Yates shuffled deck order
-    UNIQUE (game_id, card_id)
+    room_id VARCHAR(8) NOT NULL REFERENCES game_rooms(id) ON DELETE CASCADE,
+    suit VARCHAR(1) NOT NULL, -- 'H', 'D', 'C', 'S'
+    rank VARCHAR(2) NOT NULL, -- 'A', '2', ..., '10', 'J', 'Q', 'K'
+    location VARCHAR(20) NOT NULL, -- 'deck', 'discard', 'hand'
+    player_id INT REFERENCES users(id), -- NULL if in deck or discard pile
+    card_order INT, -- Critical for Fisher-Yates shuffle order
+    CONSTRAINT valid_location CHECK (location IN ('deck', 'discard', 'hand'))
 );
 
-CREATE TABLE IF NOT EXISTS game_events (
-    id SERIAL PRIMARY KEY,
-    game_id INTEGER REFERENCES games(id) ON DELETE CASCADE,
-    user_id INTEGER REFERENCES users(id),
-    action_type VARCHAR(50) NOT NULL, -- 'DRAW', 'DISCARD', 'KNOCK'
-    card_id INTEGER REFERENCES cards(id), -- Which card was moved
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
-
-
-
+-- Indexing for production performance on Render
+CREATE INDEX IF NOT EXISTS idx_game_cards_room ON game_cards(room_id);
+CREATE INDEX IF NOT EXISTS idx_game_cards_location ON game_cards(location);

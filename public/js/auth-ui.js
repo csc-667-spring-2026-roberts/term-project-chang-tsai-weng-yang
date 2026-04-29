@@ -6,6 +6,7 @@ const modal = document.getElementById('auth-modal');
 const openLoginButton = document.getElementById('open-login');
 const openRegisterButton = document.getElementById('open-register');
 const logoutButton = document.getElementById('logout-button');
+const profileLink = document.getElementById('profile-link');
 const loginTab = document.getElementById('login-tab');
 const registerTab = document.getElementById('register-tab');
 const loginPanel = document.getElementById('login-panel');
@@ -34,6 +35,14 @@ async function logout() {
 
   if (!response.ok) {
     throw new Error(payload.message || 'Logout failed');
+  }
+
+  // Clear game session on logout
+  localStorage.removeItem("gameSession");
+  window.__gameState = null;
+  const leaveButton = document.querySelector("#btn-leave-game");
+  if (leaveButton) {
+    leaveButton.hidden = true;
   }
 
   return payload;
@@ -74,6 +83,10 @@ function updateAuthButtons(authenticated) {
 
   if (logoutButton instanceof HTMLElement) {
     logoutButton.hidden = !authenticated;
+  }
+
+  if (profileLink instanceof HTMLElement) {
+    profileLink.hidden = !authenticated;
   }
 
   if (authSessionState instanceof HTMLElement) {

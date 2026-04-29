@@ -9,6 +9,8 @@ import { fileURLToPath } from "url";
 import indexRouter from "./routes/index.js";
 import authRouter from "./routes/auth.js";
 import sseRouter from "./routes/sse.js";
+import gameRouter from "./routes/game.js";
+import profileRouter from "./routes/profile.js";
 import logging from "./middleware/logging.js";
 import { requireAuth } from "./middleware/auth.js";
 import pool, { initializeDatabase } from "./db.js";
@@ -39,8 +41,7 @@ app.use(
   session({
     store: new PgSession({
       pool: pool,
-      tableName: "user_sessions",
-      createTableIfMissing: true,
+      createTableIfMissing: false,
     }),
     secret: process.env.SESSION_SECRET || "fallback_secret",
     resave: false,
@@ -59,6 +60,8 @@ app.use(express.static(path.join(__dirname, "..", "public")));
 app.use("/", indexRouter);
 app.use("/auth", authRouter);
 app.use("/api", sseRouter);
+app.use("/api/game", gameRouter);
+app.use("/api/profile", profileRouter);
 
 app.get("/protected", requireAuth, (req: Request, res: Response) => {
   res.status(200).json({
