@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Profile</title>
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <nav class="home-nav">
+      <div class="home-nav-left">
+        <span class="nav-logo">♠ Gin Rummy</span>
+        <div class="home-nav-links">
+          <a href="/">Home</a>
+          <a href="/about">About</a>
+          <a href="/rules">Rules</a>
+        </div>
+      </div>
+      <div class="home-nav-auth">
+        <div id="session-banner"></div>
+        <button id="open-login" class="auth-button" type="button">Login</button>
+        <button id="open-register" class="auth-button auth-button-register" type="button">
+          Register
+        </button>
+        <button id="logout-button" class="auth-button" type="button" hidden>Log Out</button>
+      </div>
+    </nav>
+
+    <div id="profile-container" class="profile-container" hidden>
+      <div class="profile-card">
+        <h1>User Profile</h1>
+
+        <div class="profile-section">
+          <label for="email-display">Email:</label>
+          <p id="email-display" class="profile-value"></p>
+        </div>
+
+        <div class="profile-section">
+          <label for="nickname-input">Nickname:</label>
+          <div class="profile-input-group">
+            <input
+              id="nickname-input"
+              type="text"
+              placeholder="Enter your nickname"
+              maxlength="100"
+            />
+            <button id="btn-save-nickname" type="button" class="profile-save-btn">Save</button>
+          </div>
+          <div id="nickname-error" class="profile-error" hidden></div>
+          <div id="nickname-success" class="profile-success" hidden>Nickname updated!</div>
+        </div>
+
+        <div class="profile-actions">
+          <a href="/" class="profile-back-btn">Back to Game</a>
+        </div>
+      </div>
+    </div>
+
+    <div id="profile-loading" class="profile-loading" hidden>
+      <p>Loading profile...</p>
+    </div>
+
+    <template id="session-banner-tpl">
+      <span class="session-badge">
+        <span data-status></span>
+        <span data-email></span>
+      </span>
+    </template>
+
+    <script type="module" src="/js/auth-ui.js"></script>
+    <script type="module" src="/js/profile.js"></script>
+  </body>
+</html>

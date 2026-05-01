@@ -16,9 +16,19 @@ CSC 667 Term Project — Spring 2026
 ```bash
 npm install
 cp .env.example .env
-# Edit .env with your database credentials
+# Make sure the PostgreSQL database in DATABASE_URL already exists
 npm run dev
 ```
+
+## Local Auth Test
+
+1. Start PostgreSQL on your machine.
+2. Create the database from `.env`, for example `term_project_dev`.
+3. Run `npm run dev`.
+4. Open `http://localhost:3000`.
+5. Click `Login` or `Register` in the top-right corner of the home page.
+
+The server now auto-runs [schema.sql](/Users/hobbi/Desktop/CSC 667/term-project-chang-tsai-weng-yang/database/schema.sql) on startup, so the `users` table will be created automatically for local testing.
 
 ## Scripts
 

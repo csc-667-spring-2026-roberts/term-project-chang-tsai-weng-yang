@@ -3,15 +3,61 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>About</title>
+    <title>About - Gin Rummy</title>
     <link rel="stylesheet" href="../css/style.css" />
   </head>
   <body>
     <nav>
-      <a href="/">Home</a>
-      <a href="/about">About</a>
-      <a href="/rules">Rules</a>
+      <div class="home-nav">
+        <div class="home-nav-left">
+          <span class="nav-logo">♠ Gin Rummy</span>
+          <div class="home-nav-links">
+            <a href="/">Home</a>
+            <a href="/about" aria-current="page">About</a>
+            <a href="/rules">Rules</a>
+          </div>
+        </div>
+        <div class="static-nav-right">
+          <a class="nav-cta" href="/">Play Now</a>
+        </div>
+      </div>
     </nav>
-    <h1>About Us</h1>
+
+    <main class="rules-page">
+      <header class="rules-hero">
+        <h1>About This Project</h1>
+        <p>
+          886 Gin Rummy is a two-player card game project built for CSC 667. We focused on clear
+          gameplay flow, authentication, and real-time updates with Server-Sent Events.
+        </p>
+      </header>
+
+      <section class="rules-card">
+        <h2>What We Built</h2>
+        <ul>
+          <li>Playable Gin Rummy game interface with draw, discard, and knock actions.</li>
+          <li>User authentication with register, login, logout, and protected route checks.</li>
+          <li>SSE pipeline for server-to-client updates with subscription and broadcast support.</li>
+          <li>Automated tests for SSE endpoint behavior and multi-client event delivery.</li>
+        </ul>
+      </section>
+
+      <section class="rules-card">
+        <h2>Design Goals</h2>
+        <ul>
+          <li><strong>Simple UX:</strong> Keep game controls readable and easy to follow.</li>
+          <li><strong>Reliable state:</strong> Push updates from server instead of polling.</li>
+          <li><strong>Consistent styling:</strong> Shared nav, color system, and card layout.</li>
+          <li><strong>Maintainable code:</strong> TypeScript structure with focused modules.</li>
+        </ul>
+      </section>
+
+      <section class="rules-card">
+        <h2>Team</h2>
+        <p>
+          Jacky Yang, Ian Weng, Pei Huan Chang, and Doris Tsai.
+        </p>
+      </section>
+    </main>
   </body>
 </html>

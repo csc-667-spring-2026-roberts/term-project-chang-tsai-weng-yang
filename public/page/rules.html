@@ -3,18 +3,154 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Rules</title>
+    <title>Gin Rummy Rules</title>
     <link rel="stylesheet" href="../css/style.css" />
   </head>
   <body>
     <nav>
-      <a href="/">Home</a>
-      <a href="/about">About</a>
-      <a href="/rules">Rules</a>
+      <div class="home-nav">
+        <div class="home-nav-left">
+          <span class="nav-logo">♠ Gin Rummy</span>
+          <div class="home-nav-links">
+            <a href="/">Home</a>
+            <a href="/about">About</a>
+            <a href="/rules" aria-current="page">Rules</a>
+          </div>
+        </div>
+        <div class="static-nav-right">
+          <a class="nav-cta" href="/">Play Now</a>
+        </div>
+      </div>
     </nav>
 
-    <h1>Rules</h1>
-    <p>Gin Rummy is a two-player card game...</p>
-    <img src="../image/points.jpg" alt="Points Chart">
+    <main class="rules-page">
+      <header class="rules-hero">
+        <h1>Gin Rummy Rules</h1>
+        <p>
+          This page explains how to play Gin Rummy in a clear, practical way. You can use it as a
+          quick reference while playing in our app.
+        </p>
+      </header>
+
+      <section class="rules-card">
+        <h2>1. Objective</h2>
+        <p>
+          Form valid card groups (<strong>sets</strong> and <strong>runs</strong>) and minimize
+          your <strong>deadwood</strong> points. Win rounds by knocking or going gin, and win the
+          game by reaching the target score first.
+        </p>
+      </section>
+
+      <section class="rules-card">
+        <h2>2. Basic Terms</h2>
+        <ul>
+          <li><strong>Set:</strong> 3 or 4 cards of the same rank (for example, 8-Hearts, 8-Clubs, 8-Spades).</li>
+          <li><strong>Run:</strong> 3 or more cards in sequence of the same suit (for example, 5-6-7 of Hearts).</li>
+          <li><strong>Deadwood:</strong> Cards not used in any set or run.</li>
+          <li><strong>Knock:</strong> End the round with deadwood at or below the knock limit.</li>
+          <li><strong>Gin:</strong> End the round with zero deadwood.</li>
+        </ul>
+      </section>
+
+      <section class="rules-card">
+        <h2>3. Setup</h2>
+        <ul>
+          <li>Two players use a standard 52-card deck.</li>
+          <li>Each player receives 10 cards.</li>
+          <li>One card is placed face up to start the discard pile.</li>
+          <li>The remaining cards form the stock pile.</li>
+        </ul>
+      </section>
+
+      <section class="rules-card">
+        <h2>4. Turn Flow</h2>
+        <ol>
+          <li>Draw one card from either the stock pile or discard pile.</li>
+          <li>Rearrange your hand to build sets/runs and reduce deadwood.</li>
+          <li>Discard exactly one card to end your turn.</li>
+        </ol>
+        <p class="rules-note">
+          A hand should always return to 10 cards at the end of your turn.
+        </p>
+      </section>
+
+      <section class="rules-card">
+        <h2>5. Ending a Round</h2>
+        <h3>Knock</h3>
+        <p>
+          You may knock when your deadwood is at or below the table limit (commonly 10 points).
+          After knocking, both hands are revealed and scored.
+        </p>
+
+        <h3>Gin</h3>
+        <p>
+          If all cards are arranged in valid groups and deadwood is zero, you declare gin. This
+          usually gives a bonus on top of deadwood difference.
+        </p>
+      </section>
+
+      <section class="rules-card">
+        <h2>6. Scoring Basics</h2>
+        <ul>
+          <li>Ace = 1 point</li>
+          <li>2-10 = face value</li>
+          <li>J, Q, K = 10 points each</li>
+        </ul>
+
+        <p>
+          The round winner typically gains the difference between both players' deadwood totals.
+        </p>
+
+        <table class="rules-points-table" aria-label="Gin Rummy point reference">
+          <thead>
+            <tr>
+              <th>Card Type</th>
+              <th>Point Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Ace</td>
+              <td>1</td>
+            </tr>
+            <tr>
+              <td>Number cards (2-10)</td>
+              <td>Face value</td>
+            </tr>
+            <tr>
+              <td>Jack, Queen, King</td>
+              <td>10 each</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="rules-card">
+        <h2>7. Undercut (Common Rule)</h2>
+        <p>
+          If the knocker does <strong>not</strong> have lower deadwood than the opponent, the
+          opponent scores an undercut bonus plus deadwood difference.
+        </p>
+      </section>
+
+      <section class="rules-card">
+        <h2>8. Winning the Game</h2>
+        <p>
+          Play multiple rounds. Keep a cumulative score. The first player to reach the target
+          score (often 100) wins the game.
+        </p>
+      </section>
+
+      <section class="rules-card">
+        <h2>9. Quick In-App Guide</h2>
+        <ul>
+          <li>Use <strong>Draw Stock</strong> or <strong>Draw Discard</strong> to draw.</li>
+          <li>Select a card and use <strong>Discard</strong> to end your turn.</li>
+          <li>Use <strong>Sort</strong> to organize your hand faster.</li>
+          <li>Press <strong>Knock</strong> when your hand is ready to close the round.</li>
+          <li>Use <strong>View Scores</strong> to check round history and total points.</li>
+        </ul>
+      </section>
+    </main>
   </body>
 </html>
