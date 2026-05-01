@@ -178,8 +178,8 @@
   function render(state) {
     if (!state || !state.cards) return;
 
-    const me        = session.playerId;
-    const opp       = session.opponentId;
+    const me        = state.activePlayerId || session.playerId;
+    const opp       = state.opponentPlayerId || session.opponentId;
     const myHand    = state.cards.filter((c) => c.location === "hand" && c.player_id === me);
     const oppHand   = state.cards.filter((c) => c.location === "hand" && c.player_id === opp);
     const deck      = state.cards.filter((c) => c.location === "deck");
@@ -232,6 +232,7 @@
 
     // HUD
     const myTurn = !!state.isMyTurn;
+    updatePlayerLabels(me);
     hudTurnDot.classList.toggle("your-turn", myTurn);
     hudTurnText.textContent = myTurn ? "Your turn" : `${opponentNickname}'s turn`;
 
@@ -269,8 +270,9 @@
 
     el.addEventListener("click", () => {
       if (!lastState || !lastState.isMyTurn) return;
+      const activePlayerId = lastState.activePlayerId || session.playerId;
       const myHandSize = lastState.cards.filter(
-        (c) => c.location === "hand" && c.player_id === session.playerId,
+        (c) => c.location === "hand" && c.player_id === activePlayerId,
       ).length;
       if (myHandSize <= 10) {
         flashMessage("Draw a card first.");
@@ -293,6 +295,16 @@
     suit.className = "card-suit";
     suit.textContent = SUIT_GLYPH[card.suit] || card.suit;
     target.append(rank, suit);
+  }
+
+  function updatePlayerLabels(activePlayerId) {
+    const viewingOpponentSeat = session?.selfPlay && activePlayerId === session.opponentId;
+    if (hudSelf) {
+      hudSelf.textContent = viewingOpponentSeat ? opponentNickname : selfNickname;
+    }
+    if (hudOpponent) {
+      hudOpponent.textContent = viewingOpponentSeat ? selfNickname : opponentNickname;
+    }
   }
 
   // Controls
@@ -340,7 +352,7 @@
         if (r.ok) {
           const d = await r.json();
           opponentNickname = d.nickname || "Opponent";
-          if (hudOpponent) hudOpponent.textContent = opponentNickname;
+          updatePlayerLabels(lastState?.activePlayerId || session.playerId);
         }
       } catch (e) { /* ignore */ }
     }
@@ -351,7 +363,7 @@
         const d = await r.json();
         if (d.user) {
           selfNickname = d.user.nickname || d.user.email || "You";
-          if (hudSelf) hudSelf.textContent = selfNickname;
+          updatePlayerLabels(lastState?.activePlayerId || session.playerId);
         }
       }
     } catch (e) { /* ignore */ }

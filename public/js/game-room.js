@@ -176,7 +176,7 @@
 
       const data = await response.json();
       currentRoomId = data.id;
-      iAmHost = false; // We joined, not created.
+      iAmHost = !!data.self_play; // Self-play uses the room creator as the local host.
       hideLoading(joinLoading);
       startGameOnMatch(data);
     } catch (error) {
@@ -264,6 +264,7 @@
       playerId: currentUserId,
       opponentId: opponentId,
       isPlayer1: iAmHost,
+      selfPlay: !!(roomData.selfPlay || roomData.self_play),
       startedAt: Date.now(),
     };
 
