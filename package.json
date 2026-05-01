@@ -19,7 +19,7 @@
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
     "clean": "rm -rf dist/",
-    "prepare": "husky",
+    "prepare": "husky || true",
     "migrate": "node ./database/migration.js"
   },
   "lint-staged": {
