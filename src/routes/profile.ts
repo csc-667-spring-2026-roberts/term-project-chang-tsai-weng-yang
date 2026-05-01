@@ -11,7 +11,7 @@ interface UserRow {
   nickname: string | null;
 }
 
-// Get user profile
+// Get current user's profile
 router.get("/", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.session.userId;
@@ -64,14 +64,11 @@ router.post("/update-nickname", requireAuth, async (req: Request, res: Response)
       return res.status(500).json({ message: "Failed to update nickname" });
     }
 
-    // Broadcast profile update to session
     const sessionRoom = req.sessionID ? `session:${req.sessionID}` : null;
     if (sessionRoom) {
       broadcastToRoom(sessionRoom, {
         event: "profile:updated",
-        data: {
-          nickname: user.nickname,
-        },
+        data: { nickname: user.nickname },
       });
     }
 
@@ -93,7 +90,7 @@ router.get("/user/:userId", async (req: Request, res: Response) => {
 
     const result = await pool.query<UserRow>(
       "SELECT id, email, nickname FROM users WHERE id = $1",
-      [parseInt(userId)],
+      [parseInt(userId, 10)],
     );
 
     const user = result.rows[0];

@@ -19,13 +19,13 @@ export function createDeck(): Card[] {
   return deck;
 }
 
+// Fisher-Yates shuffle
 export function shuffle(deck: Card[]): Card[] {
   for (let i = deck.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-
-    const temp = deck[i];
+    const temp = deck[i] as Card;
     deck[i] = deck[j] as Card;
-    deck[j] = temp as Card;
+    deck[j] = temp;
   }
   return deck;
 }

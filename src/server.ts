@@ -13,7 +13,8 @@ import gameRouter from "./routes/game.js";
 import profileRouter from "./routes/profile.js";
 import logging from "./middleware/logging.js";
 import { requireAuth } from "./middleware/auth.js";
-import pool, { initializeDatabase } from "./db.js";
+import { initializeDatabase } from "./db.js";
+import pool from "./db.js";
 
 dotenv.config();
 
@@ -49,7 +50,7 @@ app.use(
     cookie: {
       httpOnly: true,
       sameSite: "lax",
-      secure: false,
+      secure: process.env.NODE_ENV === "production",
       maxAge: 1000 * 60 * 60,
     },
   }),
@@ -87,7 +88,6 @@ async function startServer(): Promise<void> {
 }
 
 const isDirectRun = process.argv[1] === __filename;
-
 if (isDirectRun) {
   void startServer();
 }
