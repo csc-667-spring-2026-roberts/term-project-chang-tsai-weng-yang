@@ -1,6 +1,7 @@
 import { Request } from "express";
 import { randomBytes } from "crypto";
 import pool from "../db.js";
+import type { Card } from "../utils/cards.js";
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -124,8 +125,8 @@ export async function dealCards(
   client: { query: (sql: string, params: unknown[]) => Promise<{ rows: unknown[] }> },
   roomId: string,
   playerIds: number[],
-  createDeck: () => GameCard[],
-  shuffle: (arr: GameCard[]) => GameCard[],
+  createDeck: () => Card[],
+  shuffle: (arr: Card[]) => Card[],
 ): Promise<number> {
   // Determine cards per player based on player count
   const cardsPerPlayer = playerIds.length === 2 ? 10 : 7;
