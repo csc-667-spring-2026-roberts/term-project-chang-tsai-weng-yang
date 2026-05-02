@@ -21,12 +21,32 @@ CREATE TABLE IF NOT EXISTS game_rooms (
     id VARCHAR(8) PRIMARY KEY,
     created_by INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     player_2_id INT REFERENCES users(id) ON DELETE CASCADE,
+    player_3_id INT REFERENCES users(id) ON DELETE CASCADE,
+    player_4_id INT REFERENCES users(id) ON DELETE CASCADE,
     status VARCHAR(50) DEFAULT 'waiting',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     matched_at TIMESTAMP,
-    -- 'completed' is often used as the 'active' state in the routes
-    CONSTRAINT valid_status CHECK (status IN ('waiting', 'matched', 'completed', 'cancelled'))
+    started_at TIMESTAMP,
+    -- 'waiting': room created, waiting for players
+    -- 'waiting_to_start': room has 2+ players, waiting for host to click start
+    -- 'completed': game is in progress
+    -- 'cancelled': room was cancelled
+    CONSTRAINT valid_status CHECK (status IN ('waiting', 'waiting_to_start', 'completed', 'cancelled'))
 );
+
+-- Add missing columns if they don't exist (for existing databases)
+DO $$ 
+BEGIN 
+  IF NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='game_rooms' AND column_name='player_3_id') THEN
+    ALTER TABLE game_rooms ADD COLUMN player_3_id INT REFERENCES users(id) ON DELETE CASCADE;
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='game_rooms' AND column_name='player_4_id') THEN
+    ALTER TABLE game_rooms ADD COLUMN player_4_id INT REFERENCES users(id) ON DELETE CASCADE;
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='game_rooms' AND column_name='started_at') THEN
+    ALTER TABLE game_rooms ADD COLUMN started_at TIMESTAMP;
+  END IF;
+END $$;
 
 -- GAME STATE: Tracks whose turn it is
 CREATE TABLE IF NOT EXISTS game_state (

@@ -179,9 +179,7 @@
     if (!state || !state.cards) return;
 
     const me        = state.activePlayerId || session.playerId;
-    const opp       = state.opponentPlayerId || session.opponentId;
     const myHand    = state.cards.filter((c) => c.location === "hand" && c.player_id === me);
-    const oppHand   = state.cards.filter((c) => c.location === "hand" && c.player_id === opp);
     const deck      = state.cards.filter((c) => c.location === "deck");
     const discardP  = state.cards.filter((c) => c.location === "discard");
 
@@ -201,12 +199,19 @@
       selfHand.appendChild(buildCard(card, true));
     }
 
-    // Opponent hand (face-down backs)
+    // Opponent(s) hand (face-down backs)
+    // For 3-4 player games, show all other players' cards
     opponentHand.replaceChildren();
-    for (let i = 0; i < oppHand.length; i++) {
-      const back = document.createElement("div");
-      back.className = "card back";
-      opponentHand.appendChild(back);
+    const allPlayers = state.activePlayers || []; // List of all player IDs
+    const otherPlayers = allPlayers.filter((id) => id !== me);
+    
+    for (const playerId of otherPlayers) {
+      const oppHand = state.cards.filter((c) => c.location === "hand" && c.player_id === playerId);
+      for (let i = 0; i < oppHand.length; i++) {
+        const back = document.createElement("div");
+        back.className = "card back";
+        opponentHand.appendChild(back);
+      }
     }
 
     // Deck count
@@ -237,10 +242,13 @@
     hudTurnText.textContent = myTurn ? "Your turn" : `${opponentNickname}'s turn`;
 
     // Pile and button gating.
-    // 10 cards = haven't drawn yet (must draw); 11 cards = have drawn (must discard).
+    // 2 players: 10 cards = haven't drawn yet (must draw); 11 cards = have drawn (must discard).
+    // 3-4 players: 7 cards = haven't drawn yet (must draw); 8 cards = have drawn (must discard).
     const handSize = myHand.length;
-    const mustDraw    = myTurn && handSize === 10;
-    const mustDiscard = myTurn && handSize >= 11;
+    const playerCount = state.playerCount || 2;
+    const cardsPerPlayer = playerCount === 2 ? 10 : 7;
+    const mustDraw    = myTurn && handSize === cardsPerPlayer;
+    const mustDiscard = myTurn && handSize >= (cardsPerPlayer + 1);
 
     pileDeck.classList.toggle("disabled", !(mustDraw && deck.length > 0));
     pileDiscard.classList.toggle("disabled", !(mustDraw && !!showTop));
@@ -274,7 +282,12 @@
       const myHandSize = lastState.cards.filter(
         (c) => c.location === "hand" && c.player_id === activePlayerId,
       ).length;
-      if (myHandSize <= 10) {
+      // Determine required hand size based on player count
+      const playerCount = lastState.playerCount || 2;
+      const cardsPerPlayer = playerCount === 2 ? 10 : 7;
+      const maxHandSizeBeforeDiscard = cardsPerPlayer;
+      
+      if (myHandSize <= maxHandSizeBeforeDiscard) {
         flashMessage("Draw a card first.");
         return;
       }
@@ -303,7 +316,12 @@
       hudSelf.textContent = viewingOpponentSeat ? opponentNickname : selfNickname;
     }
     if (hudOpponent) {
-      hudOpponent.textContent = viewingOpponentSeat ? selfNickname : opponentNickname;
+      // For multi-player games, show whose turn it is
+      if (lastState && lastState.playerCount > 2) {
+        hudOpponent.textContent = `Player ${activePlayerId}`;
+      } else {
+        hudOpponent.textContent = viewingOpponentSeat ? selfNickname : opponentNickname;
+      }
     }
   }
 

@@ -29,6 +29,7 @@
 
   // Waiting Elements
   const btnCancelWait = document.querySelector("#btn-cancel-wait");
+  const waitingPanel = document.querySelector("#panel-waiting");
 
   // New Game Button
   const btnNewGame = document.querySelector("#btn-new-game");
@@ -38,11 +39,11 @@
   let currentUserId = null;
   let eventSource = null;
   let gameStarted = false;
-  // Source of truth for "am I the host?" - set when this browser
-  // *creates* a room. Don't try to derive this from the SSE payload
-  // because the broadcast schema (player1Id/player2Id) doesn't carry
-  // `created_by` - that bug is what kept /start from ever firing.
   let iAmHost = false;
+  let playerCount = 0;
+  let btnStartGame = null;
+  let playerCountDisplay = null;
+  let waitingMessage = null;
 
   async function getCurrentUserId() {
     if (currentUserId) return currentUserId;
@@ -115,8 +116,28 @@
     if (createError) createError.hidden = true;
     if (createLoading) createLoading.hidden = true;
     if (createSuccess) createSuccess.hidden = true;
+    
+    // Clean up joined room info
+    const joinedRoomInfo = panelJoin?.querySelector(".joined-room-info");
+    if (joinedRoomInfo) joinedRoomInfo.remove();
+    
+    // Clean up player displays
+    if (playerCountDisplay) {
+      playerCountDisplay.remove();
+      playerCountDisplay = null;
+    }
+    if (btnStartGame) {
+      btnStartGame.remove();
+      btnStartGame = null;
+    }
+    if (waitingMessage) {
+      waitingMessage.remove();
+      waitingMessage = null;
+    }
+    
     currentRoomId = null;
     iAmHost = false;
+    playerCount = 0;
   }
 
   function switchTab(tabName) {
@@ -176,13 +197,38 @@
 
       const data = await response.json();
       currentRoomId = data.id;
-      iAmHost = !!data.self_play; // Self-play uses the room creator as the local host.
+      iAmHost = false; // We joined, not created
       hideLoading(joinLoading);
-      startGameOnMatch(data);
+      
+      // Show joined room info in the join panel
+      playerCount = [data.created_by, data.player_2_id, data.player_3_id, data.player_4_id].filter(id => id).length;
+      setupJoinedRoomInfo(data);
+      subscribeToRoom(data.id);
     } catch (error) {
       console.error("Error joining room:", error);
       showError(joinError, "Network error. Please try again.");
       hideLoading(joinLoading);
+    }
+  }
+
+  function setupJoinedRoomInfo(roomData) {
+    // Create a container for room info in the join panel if it doesn't exist
+    let roomInfoContainer = panelJoin?.querySelector(".joined-room-info");
+    if (!roomInfoContainer && panelJoin) {
+      roomInfoContainer = document.createElement("div");
+      roomInfoContainer.className = "joined-room-info game-room-success";
+      panelJoin.appendChild(roomInfoContainer);
+    }
+
+    if (roomInfoContainer) {
+      const playerCount = [roomData.created_by, roomData.player_2_id, roomData.player_3_id, roomData.player_4_id].filter(id => id).length;
+      roomInfoContainer.innerHTML = `
+        <p>Joined Room!</p>
+        <p>Room ID: <strong>${roomData.id}</strong></p>
+        <p style="margin: 20px 0; font-weight: bold;">Waiting for host to start the game...</p>
+        <p>Players: ${playerCount}/4</p>
+      `;
+      roomInfoContainer.hidden = false;
     }
   }
 
@@ -213,10 +259,14 @@
 
       const data = await response.json();
       currentRoomId = data.id;
-      iAmHost = true; // We created this room - we are the host.
+      iAmHost = true; // We created this room
+      playerCount = 1; // Just us for now
 
       hideLoading(createLoading);
       showSuccess(createSuccess, data.id);
+      
+      // Setup waiting panel in the create tab
+      setupCreateRoomWaiting();
       subscribeToRoom(data.id);
     } catch (error) {
       console.error("Error creating room:", error);
@@ -225,14 +275,175 @@
     }
   }
 
+  function setupCreateRoomWaiting() {
+    // Remove old elements from success section
+    const successSection = createSuccess?.parentElement;
+    if (successSection) {
+      const oldPlayerList = successSection.querySelector(".player-list-display");
+      if (oldPlayerList) oldPlayerList.remove();
+      const oldButton = successSection.querySelector(".btn-start-game");
+      if (oldButton) oldButton.remove();
+    }
+
+    // Add player list display
+    if (createSuccess && !playerCountDisplay) {
+      playerCountDisplay = document.createElement("div");
+      playerCountDisplay.className = "player-list-display";
+      createSuccess.parentElement?.appendChild(playerCountDisplay);
+    }
+
+    if (playerCountDisplay) {
+      playerCountDisplay.innerHTML = `
+        <p style="margin-top: 20px; font-weight: bold;">Players in room:</p>
+        <p style="margin: 10px 0; font-size: 14px;">Players: ${playerCount}/4</p>
+      `;
+    }
+
+    // Add start button if host
+    if (iAmHost && !btnStartGame) {
+      btnStartGame = document.createElement("button");
+      btnStartGame.className = "btn-start-game game-room-action-btn";
+      btnStartGame.textContent = "Start Game";
+      btnStartGame.disabled = playerCount < 2;
+      btnStartGame.addEventListener("click", startGame);
+      
+      if (createSuccess && createSuccess.parentElement) {
+        createSuccess.parentElement.appendChild(btnStartGame);
+      }
+    } else if (btnStartGame) {
+      btnStartGame.disabled = playerCount < 2;
+    }
+  }
+
+  function updateWaitingPanel() {
+    // Remove old elements
+    if (waitingPanel) {
+      const oldPlayerCount = waitingPanel.querySelector(".player-count-display");
+      if (oldPlayerCount) oldPlayerCount.remove();
+      const oldButton = waitingPanel.querySelector(".btn-start-game");
+      if (oldButton) oldButton.remove();
+      const oldMessage = waitingPanel.querySelector(".waiting-message");
+      if (oldMessage) oldMessage.remove();
+    }
+
+    // Add player count display
+    if (waitingPanel && !playerCountDisplay) {
+      playerCountDisplay = document.createElement("p");
+      playerCountDisplay.className = "player-count-display";
+      waitingPanel.insertBefore(playerCountDisplay, waitingPanel.querySelector(".game-room-waiting-indicator"));
+    }
+
+    if (playerCountDisplay) {
+      playerCountDisplay.textContent = `Players in room: ${playerCount}/4`;
+    }
+
+    // Add start button if host
+    if (iAmHost && !btnStartGame) {
+      btnStartGame = document.createElement("button");
+      btnStartGame.className = "btn-start-game game-room-action-btn";
+      btnStartGame.textContent = "Start Game";
+      btnStartGame.disabled = playerCount < 2;
+      btnStartGame.addEventListener("click", startGame);
+      
+      const waitingIndicator = waitingPanel?.querySelector(".game-room-waiting-indicator");
+      if (waitingIndicator && waitingPanel) {
+        waitingPanel.insertBefore(btnStartGame, waitingIndicator);
+      }
+    } else if (btnStartGame) {
+      btnStartGame.disabled = playerCount < 2;
+    }
+
+    // Add waiting message for non-host
+    if (!iAmHost && !waitingMessage) {
+      waitingMessage = document.createElement("p");
+      waitingMessage.className = "waiting-message";
+      waitingMessage.textContent = "Waiting for the host to start the game...";
+      waitingPanel?.appendChild(waitingMessage);
+    }
+  }
+
+  function updateWaitingPanel() {
+    // Remove old elements
+    if (waitingPanel) {
+      const oldPlayerCount = waitingPanel.querySelector(".player-count-display");
+      if (oldPlayerCount) oldPlayerCount.remove();
+      const oldButton = waitingPanel.querySelector(".btn-start-game");
+      if (oldButton) oldButton.remove();
+      const oldMessage = waitingPanel.querySelector(".waiting-message");
+      if (oldMessage) oldMessage.remove();
+    }
+
+    // Add player count display
+    if (waitingPanel && !playerCountDisplay) {
+      playerCountDisplay = document.createElement("p");
+      playerCountDisplay.className = "player-count-display";
+      waitingPanel.insertBefore(playerCountDisplay, waitingPanel.querySelector(".game-room-waiting-indicator"));
+    }
+
+    if (playerCountDisplay) {
+      playerCountDisplay.textContent = `Players in room: ${playerCount}/4`;
+    }
+
+    // Add start button if host
+    if (iAmHost && !btnStartGame) {
+      btnStartGame = document.createElement("button");
+      btnStartGame.className = "btn-start-game game-room-action-btn";
+      btnStartGame.textContent = "Start Game";
+      btnStartGame.disabled = playerCount < 2;
+      btnStartGame.addEventListener("click", startGame);
+      
+      const waitingIndicator = waitingPanel?.querySelector(".game-room-waiting-indicator");
+      if (waitingIndicator && waitingPanel) {
+        waitingPanel.insertBefore(btnStartGame, waitingIndicator);
+      }
+    } else if (btnStartGame) {
+      btnStartGame.disabled = playerCount < 2;
+    }
+
+    // Add waiting message for non-host
+    if (!iAmHost && !waitingMessage) {
+      waitingMessage = document.createElement("p");
+      waitingMessage.className = "waiting-message";
+      waitingMessage.textContent = "Waiting for the host to start the game...";
+      waitingPanel?.appendChild(waitingMessage);
+    }
+  }
+
   function subscribeToRoom(roomId) {
     if (eventSource) eventSource.close();
 
     eventSource = new EventSource(`/api/sse?room=game:room:${roomId.toUpperCase()}`);
 
-    eventSource.addEventListener("game:matched", (event) => {
+    eventSource.addEventListener("game:player_joined", (event) => {
       const data = JSON.parse(event.data);
-      startGameOnMatch(data);
+      playerCount = data.playerCount;
+      // Update the display
+      if (iAmHost) {
+        // Update create room waiting display
+        if (playerCountDisplay) {
+          playerCountDisplay.innerHTML = `
+            <p style="margin-top: 20px; font-weight: bold;">Players in room:</p>
+            <p style="margin: 10px 0; font-size: 14px;">Players: ${playerCount}/4</p>
+          `;
+        }
+        if (btnStartGame) {
+          btnStartGame.disabled = playerCount < 2;
+        }
+      } else {
+        // Update joined room display
+        const roomInfo = panelJoin?.querySelector(".joined-room-info");
+        if (roomInfo) {
+          const playerLine = roomInfo.querySelector("p:last-child");
+          if (playerLine) {
+            playerLine.textContent = `Players: ${playerCount}/4`;
+          }
+        }
+      }
+    });
+
+    eventSource.addEventListener("game:started", (event) => {
+      const data = JSON.parse(event.data);
+      startGameOnMatch({ roomId: data.roomId });
     });
 
     eventSource.addEventListener("game:room_cancelled", () => {
@@ -246,25 +457,44 @@
     });
   }
 
+  async function startGame() {
+    if (!iAmHost || playerCount < 2) {
+      showError(createError, "Cannot start game: need at least 2 players");
+      return;
+    }
+
+    if (!btnStartGame) return;
+    btnStartGame.disabled = true;
+
+    try {
+      const response = await fetch(`/api/game/rooms/${currentRoomId}/start`, {
+        method: "POST",
+        credentials: "same-origin",
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        showError(createError, data.message || "Failed to start game");
+        if (btnStartGame) btnStartGame.disabled = false;
+        return;
+      }
+
+      // The SSE event will trigger startGameOnMatch
+    } catch (error) {
+      console.error("Error starting game:", error);
+      showError(createError, "Network error. Please try again.");
+      if (btnStartGame) btnStartGame.disabled = false;
+    }
+  }
+
   function startGameOnMatch(roomData) {
     if (gameStarted) return;
     gameStarted = true;
 
-    // Match payload comes in two shapes:
-    //   Host (via SSE):     { roomId, player1Id, player2Id, status }
-    //   Joiner (via fetch): { id, created_by, player_2_id, ... }
-    // Trust the local iAmHost flag for our role; pull opponent id from
-    // whichever field the payload happens to carry.
-    const player1 = roomData.player1Id != null ? roomData.player1Id : roomData.created_by;
-    const player2 = roomData.player2Id != null ? roomData.player2Id : roomData.player_2_id;
-    const opponentId = iAmHost ? player2 : player1;
-
     const gameSession = {
-      roomId: currentRoomId,
+      roomId: currentRoomId || roomData.roomId,
       playerId: currentUserId,
-      opponentId: opponentId,
       isPlayer1: iAmHost,
-      selfPlay: !!(roomData.selfPlay || roomData.self_play),
       startedAt: Date.now(),
     };
 

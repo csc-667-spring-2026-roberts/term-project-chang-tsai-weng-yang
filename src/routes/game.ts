@@ -1,146 +1,97 @@
 import express, { Request, Response } from "express";
-import { randomBytes } from "crypto";
 import pool from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { broadcastToRoom } from "../sse/hub.js";
 import { createDeck, shuffle } from "../utils/cards.js";
+import {
+  getUserId,
+  sessionRoom,
+  generateRoomId,
+  GameRoom,
+  GameState,
+  GameCard,
+  getRoomWithSelfPlay,
+  dealCards,
+} from "../middleware/game.js";
+
 const router = express.Router();
 
-// Helper to get user ID from session
-function getUserId(req: Request): number | null {
-  return req.session.userId || null;
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+interface JoinRoomResult {
+  success: boolean;
+  updatedRoom?: GameRoom;
+  errorMessage?: string;
 }
 
-// Helper to get session room for real-time updates
-function sessionRoom(req: Request): string | null {
-  return req.sessionID ? `session:${req.sessionID}` : null;
-}
-
-// Helper to generate a 6-character room ID
-function generateRoomId(): string {
-  return randomBytes(3).toString("hex").toUpperCase();
-}
-
-interface GameRoom {
-  id: string;
-  created_by: number;
-  player_2_id: number | null;
-  status: string;
-  created_at: string;
-  matched_at: string | null;
-}
-
-interface GameState {
-  room_id: string;
-  turn_user_id: number;
-}
-
-interface GameCard {
-  id: number;
-  suit: string;
-  rank: string;
-  location: string;
-  player_id: number | null;
-  card_order: number;
-}
-
-interface SelfPlayUserRow {
-  id: number;
-}
-
-interface GameRoomWithPlayer2Email extends GameRoom {
-  player_2_email: string | null;
-}
-
-function selfPlayEmailFor(userId: number): string {
-  return `self-play-${String(userId)}@local.invalid`;
-}
-
-async function ensureSelfPlayUser(userId: number): Promise<number> {
-  const email = selfPlayEmailFor(userId);
-  const result = await pool.query<SelfPlayUserRow>(
-    `INSERT INTO users (email, password_hash, nickname)
-       VALUES ($1, 'self-play-seat', 'Self Play')
-       ON CONFLICT (email) DO UPDATE SET nickname = users.nickname
-       RETURNING id`,
-    [email],
-  );
-
-  const user = result.rows[0];
-  if (!user) {
-    throw new Error("Failed to create self-play user");
-  }
-
-  return user.id;
-}
-
-async function getRoomWithSelfPlay(roomId: string): Promise<{
-  room: GameRoomWithPlayer2Email | null;
-  selfPlay: boolean;
-}> {
-  const result = await pool.query<GameRoomWithPlayer2Email>(
-    `SELECT game_rooms.*, users.email AS player_2_email
-       FROM game_rooms
-       LEFT JOIN users ON users.id = game_rooms.player_2_id
-      WHERE game_rooms.id = $1`,
-    [roomId],
-  );
-  const room = result.rows[0] || null;
-
-  return {
-    room,
-    selfPlay: Boolean(
-      room?.player_2_id && room.player_2_email === selfPlayEmailFor(room.created_by),
-    ),
-  };
-}
-
-function getActingUserId(
-  room: GameRoomWithPlayer2Email | null,
-  selfPlay: boolean,
-  sessionUserId: number,
-  turnUserId: number | undefined,
-): number {
-  if (
-    selfPlay &&
-    room?.created_by === sessionUserId &&
-    turnUserId === room.player_2_id
-  ) {
-    return turnUserId;
-  }
-
-  return sessionUserId;
-}
-
-function getViewPlayers(
-  room: GameRoomWithPlayer2Email | null,
-  selfPlay: boolean,
+/**
+ * Find available player slot and update room
+ */
+async function findAndUpdatePlayerSlot(
+  room: GameRoom,
   userId: number,
-  turnUserId: number | undefined,
-): {
-  activePlayerId: number;
-  canSelfPlayAct: boolean;
-  opponentPlayerId?: number;
-} {
-  const canSelfPlayAct =
-    selfPlay &&
-    room?.created_by === userId &&
-    Boolean(room.player_2_id) &&
-    (turnUserId === room.created_by || turnUserId === room.player_2_id);
+  roomId: string,
+): Promise<JoinRoomResult> {
+  let updateQuery = "";
+  let updateParams: (string | number)[] = [];
+  let playerSlot = "";
 
-  if (!canSelfPlayAct || !room.player_2_id || !turnUserId) {
+  if (room.player_2_id === null) {
+    playerSlot = "player_2";
+    updateQuery =
+      "UPDATE game_rooms SET player_2_id = $1, status = 'waiting_to_start', matched_at = NOW() WHERE id = $2 AND (status = 'waiting' OR status = 'waiting_to_start') RETURNING *";
+    updateParams = [userId, roomId.toUpperCase()];
+    console.log(`[JOIN] Player ${String(userId)} taking slot ${playerSlot} in room ${roomId}`);
+  } else if (room.player_3_id === null) {
+    playerSlot = "player_3";
+    updateQuery =
+      "UPDATE game_rooms SET player_3_id = $1, status = 'waiting_to_start' WHERE id = $2 AND (status = 'waiting' OR status = 'waiting_to_start') RETURNING *";
+    updateParams = [userId, roomId.toUpperCase()];
+    console.log(`[JOIN] Player ${String(userId)} taking slot ${playerSlot} in room ${roomId}`);
+  } else if (room.player_4_id === null) {
+    playerSlot = "player_4";
+    updateQuery =
+      "UPDATE game_rooms SET player_4_id = $1, status = 'waiting_to_start' WHERE id = $2 AND (status = 'waiting' OR status = 'waiting_to_start') RETURNING *";
+    updateParams = [userId, roomId.toUpperCase()];
+    console.log(`[JOIN] Player ${String(userId)} taking slot ${playerSlot} in room ${roomId}`);
+  } else {
+    console.log(`[JOIN] Room ${roomId} is full`);
+    return { success: false, errorMessage: "Room is full (4 players max)" };
+  }
+
+  console.log(
+    `[JOIN] Executing UPDATE for ${playerSlot}: ${updateQuery.substring(0, 60)}... with params [${String(updateParams)}]`,
+  );
+  const updateResult = await pool.query<GameRoom>(updateQuery, updateParams);
+  const updatedRoom = updateResult.rows[0];
+
+  if (!updatedRoom) {
+    const currentRoom = await pool.query<GameRoom>("SELECT * FROM game_rooms WHERE id = $1", [
+      roomId.toUpperCase(),
+    ]);
+    const current = currentRoom.rows[0];
+    const status = current?.status ?? "unknown";
+    console.log(
+      `[JOIN] Current room status in DB: '${status}' | Player slots: P2=${String(current?.player_2_id)}, P3=${String(current?.player_3_id)}, P4=${String(current?.player_4_id)}`,
+    );
     return {
-      activePlayerId: userId,
-      canSelfPlayAct: false,
+      success: false,
+      errorMessage: `Failed to join room - status is '${status}' (expected 'waiting' or 'waiting_to_start')`,
     };
   }
 
-  return {
-    activePlayerId: turnUserId,
-    canSelfPlayAct: true,
-    opponentPlayerId: turnUserId === room.created_by ? room.player_2_id : room.created_by,
-  };
+  console.log(
+    `[JOIN] Successfully updated room. New status: '${updatedRoom.status}' | Players: P2=${String(updatedRoom.player_2_id)}, P3=${String(updatedRoom.player_3_id)}, P4=${String(updatedRoom.player_4_id)}`,
+  );
+
+  return { success: true, updatedRoom };
 }
+
+// ============================================================================
+// ROUTE HANDLERS
+// ============================================================================
 
 // Create a new game room
 router.post("/rooms/create", requireAuth, async (req: Request, res: Response) => {
@@ -210,47 +161,63 @@ router.post("/rooms/join", requireAuth, async (req: Request, res: Response) => {
       return res.status(404).json({ message: "Room not found" });
     }
 
-    if (room.status !== "waiting") {
-      return res.status(400).json({ message: "Room is not available" });
+    // Allow joining during 'waiting' or 'waiting_to_start' status
+    if (room.status !== "waiting" && room.status !== "waiting_to_start") {
+      console.log(`[JOIN] Room ${roomId} status is '${room.status}' - not available for joining`);
+      return res.status(400).json({ message: `Room is not available (status: ${room.status})` });
     }
 
-    const selfPlay = room.created_by === userId;
-    const player2Id = selfPlay ? await ensureSelfPlayUser(userId) : userId;
+    // Check if user is already in the room
+    if (
+      room.created_by === userId ||
+      room.player_2_id === userId ||
+      room.player_3_id === userId ||
+      room.player_4_id === userId
+    ) {
+      return res.status(400).json({ message: "You are already in this room" });
+    }
 
-    const updateResult = await pool.query<GameRoom>(
-      "UPDATE game_rooms SET player_2_id = $1, status = 'matched', matched_at = NOW() WHERE id = $2 RETURNING *",
-      [player2Id, roomId.toUpperCase()],
-    );
+    // Find available slot and update room
+    const joinResult = await findAndUpdatePlayerSlot(room, userId, roomId);
+    if (!joinResult.success) {
+      return res.status(400).json({ message: joinResult.errorMessage });
+    }
 
-    const updatedRoom = updateResult.rows[0];
+    const updatedRoom = joinResult.updatedRoom;
     if (!updatedRoom) {
-      return res.status(500).json({ message: "Failed to join room" });
+      return res.status(500).json({ message: "Failed to update room" });
     }
+
+    // Get all players info for broadcast
+    const playerIds = [
+      updatedRoom.created_by,
+      updatedRoom.player_2_id,
+      updatedRoom.player_3_id,
+      updatedRoom.player_4_id,
+    ].filter((id): id is number => id !== null);
 
     broadcastToRoom(`game:room:${roomId.toUpperCase()}`, {
-      event: "game:matched",
+      event: "game:player_joined",
       data: {
         roomId: updatedRoom.id,
-        player1Id: updatedRoom.created_by,
-        player2Id: updatedRoom.player_2_id,
+        players: playerIds,
+        playerCount: playerIds.length,
         status: updatedRoom.status,
-        selfPlay,
       },
     });
 
     const sessionRoomId = sessionRoom(req);
     if (sessionRoomId) {
       broadcastToRoom(sessionRoomId, {
-        event: "game:matched",
+        event: "game:player_joined",
         data: {
           roomId: updatedRoom.id,
-          opponent: room.created_by,
-          selfPlay,
+          playerCount: playerIds.length,
         },
       });
     }
 
-    return res.status(200).json({ ...updatedRoom, self_play: selfPlay });
+    return res.status(200).json({ ...updatedRoom, self_play: false });
   } catch (error) {
     console.error("Error joining room:", error);
     return res.status(500).json({ message: "Server error" });
@@ -439,61 +406,84 @@ router.post("/rooms/:roomId/start", requireAuth, async (req: Request, res: Respo
     return res.status(400).json({ message: "Invalid room ID" });
   }
 
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
   const roomIdUpper = roomId.toUpperCase();
   const client = await pool.connect();
 
   try {
     await client.query("BEGIN");
 
-    // FIXED: Explicit type for room query
-    const roomRes = await client.query<GameRoom>(
-      "SELECT * FROM game_rooms WHERE id = $1 AND created_by = $2",
-      [roomIdUpper, userId],
-    );
+    // Verify the user is the room creator (host)
+    const roomRes = await client.query<GameRoom>("SELECT * FROM game_rooms WHERE id = $1", [
+      roomIdUpper,
+    ]);
     const room = roomRes.rows[0];
 
-    if (!room || room.status !== "matched") {
-      return res.status(400).json({ message: "Need 2 players to start Gin Rummy." });
+    if (!room) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ message: "Room not found" });
     }
 
+    if (room.created_by !== userId) {
+      await client.query("ROLLBACK");
+      return res.status(403).json({ message: "Only the host can start the game" });
+    }
+
+    if (room.status !== "waiting_to_start") {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ message: "Room is not ready to start" });
+    }
+
+    // Count players
+    const playerIds = [
+      room.created_by,
+      room.player_2_id,
+      room.player_3_id,
+      room.player_4_id,
+    ].filter((id): id is number => id !== null);
+
+    if (playerIds.length < 2) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ message: "Need at least 2 players to start" });
+    }
+
+    if (playerIds.length > 4) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ message: "Maximum 4 players allowed" });
+    }
+
+    // Initialize game state with first player's turn
     await client.query(
       "INSERT INTO game_state (room_id, turn_user_id) VALUES ($1, $2) ON CONFLICT (room_id) DO UPDATE SET turn_user_id = $2",
       [roomIdUpper, room.created_by],
     );
 
-    const deck = shuffle(createDeck());
+    // Deal cards to all players
+    const cardsPerPlayer = await dealCards(client, roomIdUpper, playerIds, createDeck, shuffle);
 
-    for (const [index, card] of deck.entries()) {
-      let location = "deck";
-      let ownerId = null;
-
-      if (index < 10) {
-        location = "hand";
-        ownerId = room.created_by;
-      } else if (index < 20) {
-        location = "hand";
-        ownerId = room.player_2_id;
-      } else if (index === 20) {
-        location = "discard";
-      }
-
-      await client.query(
-        `INSERT INTO game_cards (room_id, suit, rank, location, player_id, card_order) 
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [roomIdUpper, card.suit, card.rank, location, ownerId, index],
-      );
-    }
-
-    await client.query("UPDATE game_rooms SET status = 'completed' WHERE id = $1", [roomIdUpper]);
+    // Update room status and started_at
+    await client.query(
+      "UPDATE game_rooms SET status = 'completed', started_at = NOW() WHERE id = $1",
+      [roomIdUpper],
+    );
 
     await client.query("COMMIT");
 
     broadcastToRoom(`game:room:${roomIdUpper}`, {
       event: "game:started",
-      data: { roomId: roomIdUpper },
+      data: {
+        roomId: roomIdUpper,
+        playerCount: playerIds.length,
+        cardsPerPlayer: cardsPerPlayer,
+      },
     });
 
-    return res.json({ message: "Gin Rummy started: 10 cards dealt to each player." });
+    return res.json({
+      message: `Gin Rummy started with ${String(playerIds.length)} players: ${String(cardsPerPlayer)} cards dealt to each player.`,
+    });
   } catch (error) {
     await client.query("ROLLBACK");
     console.error(error);
@@ -512,18 +502,19 @@ router.post("/rooms/:roomId/draw", requireAuth, async (req: Request, res: Respon
     return res.status(400).json({ message: "Invalid room ID" });
   }
 
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
   const roomIdUpper = roomId.toUpperCase();
 
-  const [{ room, selfPlay }, stateRes] = await Promise.all([
-    getRoomWithSelfPlay(roomIdUpper),
-    pool.query<GameState>("SELECT turn_user_id FROM game_state WHERE room_id = $1", [
-      roomIdUpper,
-    ]),
-  ]);
+  const stateRes = await pool.query<GameState>(
+    "SELECT turn_user_id FROM game_state WHERE room_id = $1",
+    [roomIdUpper],
+  );
   const turnUserId = stateRes.rows[0]?.turn_user_id;
-  const actingUserId = getActingUserId(room, selfPlay, userId || 0, turnUserId);
 
-  if (!turnUserId || turnUserId !== actingUserId) {
+  if (!turnUserId || turnUserId !== userId) {
     return res.status(403).json({ message: "Not your turn!" });
   }
 
@@ -539,7 +530,7 @@ router.post("/rooms/:roomId/draw", requireAuth, async (req: Request, res: Respon
     }
 
     await pool.query("UPDATE game_cards SET location = 'hand', player_id = $1 WHERE id = $2", [
-      actingUserId,
+      userId,
       card.id,
     ]);
 
@@ -560,18 +551,19 @@ router.post("/rooms/:roomId/draw-discard", requireAuth, async (req: Request, res
     return res.status(400).json({ message: "Invalid room ID" });
   }
 
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
   const roomIdUpper = roomId.toUpperCase();
 
-  const [{ room, selfPlay }, stateRes] = await Promise.all([
-    getRoomWithSelfPlay(roomIdUpper),
-    pool.query<GameState>("SELECT turn_user_id FROM game_state WHERE room_id = $1", [
-      roomIdUpper,
-    ]),
-  ]);
+  const stateRes = await pool.query<GameState>(
+    "SELECT turn_user_id FROM game_state WHERE room_id = $1",
+    [roomIdUpper],
+  );
   const turnUserId = stateRes.rows[0]?.turn_user_id;
-  const actingUserId = getActingUserId(room, selfPlay, userId || 0, turnUserId);
 
-  if (!turnUserId || turnUserId !== actingUserId) {
+  if (!turnUserId || turnUserId !== userId) {
     return res.status(403).json({ message: "Not your turn!" });
   }
 
@@ -588,7 +580,7 @@ router.post("/rooms/:roomId/draw-discard", requireAuth, async (req: Request, res
     }
 
     await pool.query("UPDATE game_cards SET location = 'hand', player_id = $1 WHERE id = $2", [
-      actingUserId,
+      userId,
       card.id,
     ]);
 
@@ -612,18 +604,20 @@ router.post("/rooms/:roomId/discard", requireAuth, async (req: Request, res: Res
   if (!roomId || typeof roomId !== "string") {
     return res.status(400).json({ message: "Invalid room ID" });
   }
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
   const roomIdUpper = roomId.toUpperCase();
 
-  const [{ room, selfPlay }, stateRes] = await Promise.all([
-    getRoomWithSelfPlay(roomIdUpper),
-    pool.query<GameState>("SELECT turn_user_id FROM game_state WHERE room_id = $1", [
-      roomIdUpper,
-    ]),
-  ]);
+  const stateRes = await pool.query<GameState>(
+    "SELECT turn_user_id FROM game_state WHERE room_id = $1",
+    [roomIdUpper],
+  );
   const turnUserId = stateRes.rows[0]?.turn_user_id;
-  const actingUserId = getActingUserId(room, selfPlay, userId || 0, turnUserId);
 
-  if (!turnUserId || turnUserId !== actingUserId) {
+  if (!turnUserId || turnUserId !== userId) {
     return res.status(403).json({ message: "Not your turn!" });
   }
 
@@ -639,18 +633,36 @@ router.post("/rooms/:roomId/discard", requireAuth, async (req: Request, res: Res
              card_order = COALESCE((SELECT MAX(card_order) + 1 FROM game_cards WHERE room_id = $2), 0)
        WHERE id = $1 AND room_id = $2 AND player_id = $3
        RETURNING *`,
-      [cardId, roomIdUpper, actingUserId],
+      [cardId, roomIdUpper, userId],
     );
 
     if (result.rowCount === 0) {
       return res.status(400).json({ message: "Invalid card" });
     }
 
-    if (!room || !room.player_2_id) {
-      return res.status(400).json({ message: "Game room is not active" });
+    // Get room to find all active players
+    const roomResult = await pool.query<GameRoom>("SELECT * FROM game_rooms WHERE id = $1", [
+      roomIdUpper,
+    ]);
+    const room = roomResult.rows[0];
+
+    if (!room) {
+      return res.status(400).json({ message: "Game room not found" });
     }
 
-    const nextTurn = actingUserId === room.created_by ? room.player_2_id : room.created_by;
+    // Get all active players in order
+    const activePlayers = [
+      room.created_by,
+      room.player_2_id,
+      room.player_3_id,
+      room.player_4_id,
+    ].filter((id): id is number => id !== null);
+
+    // Find current player's index and get next player
+    const currentPlayerIndex = activePlayers.indexOf(userId);
+    const nextPlayerIndex = (currentPlayerIndex + 1) % activePlayers.length;
+    const nextTurn = activePlayers[nextPlayerIndex];
+
     await pool.query("UPDATE game_state SET turn_user_id = $1 WHERE room_id = $2", [
       nextTurn,
       roomIdUpper,
@@ -690,25 +702,42 @@ router.get("/rooms/:roomId/state", requireAuth, async (req: Request, res: Respon
       ]),
     ]);
     const turnUserId = state.rows[0]?.turn_user_id;
-    const { activePlayerId, canSelfPlayAct, opponentPlayerId } = getViewPlayers(
-      room,
-      selfPlay,
-      userId,
-      turnUserId,
-    );
+
+    // Get all active players
+    const activePlayers = room
+      ? [room.created_by, room.player_2_id, room.player_3_id, room.player_4_id].filter(
+          (id): id is number => id !== null,
+        )
+      : [];
 
     return res.json({
       cards: cards.rows,
       turn: turnUserId,
-      isMyTurn: turnUserId === userId || canSelfPlayAct,
-      activePlayerId,
-      opponentPlayerId,
-      selfPlay: canSelfPlayAct,
+      isMyTurn: turnUserId === userId || (selfPlay && turnUserId === room?.player_2_id),
+      activePlayerId: turnUserId,
+      activePlayers: activePlayers,
+      playerCount: activePlayers.length,
+      selfPlay: selfPlay,
     });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Failed to fetch state" });
   }
 });
+
+// Kept for potential future use
+// function getCanSelfPlayAct(
+//   room: GameRoomWithPlayer2Email | null,
+//   selfPlay: boolean,
+//   userId: number,
+//   turnUserId: number | undefined,
+// ): boolean {
+//   return (
+//     selfPlay &&
+//     room?.created_by === userId &&
+//     Boolean(room.player_2_id) &&
+//     (turnUserId === room.created_by || turnUserId === room.player_2_id)
+//   );
+// }
 
 export default router;
