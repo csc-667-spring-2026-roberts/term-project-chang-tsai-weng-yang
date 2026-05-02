@@ -26,35 +26,101 @@
       </div>
     </nav>
 
-    <div id="profile-container" class="profile-container" hidden>
-      <div class="profile-card">
-        <h1>User Profile</h1>
-
-        <div class="profile-section">
-          <label for="email-display">Email:</label>
-          <p id="email-display" class="profile-value"></p>
+    <main id="profile-container" class="profile-container" hidden>
+      <section class="profile-card profile-hero">
+        <div id="profile-avatar" class="profile-avatar">GR</div>
+        <div>
+          <p class="profile-kicker">Player Profile</p>
+          <h1 id="profile-title">Your Gin Rummy Profile</h1>
+          <p id="profile-member-since" class="profile-subtitle"></p>
         </div>
+        <a href="/" class="profile-back-btn">Back to Game</a>
+      </section>
 
-        <div class="profile-section">
-          <label for="nickname-input">Nickname:</label>
-          <div class="profile-input-group">
-            <input
-              id="nickname-input"
-              type="text"
-              placeholder="Enter your nickname"
-              maxlength="100"
-            />
-            <button id="btn-save-nickname" type="button" class="profile-save-btn">Save</button>
+      <section class="profile-grid">
+        <div class="profile-card profile-details-card">
+          <h2>Account</h2>
+          <div class="profile-section">
+            <label for="email-display">Email:</label>
+            <p id="email-display" class="profile-value"></p>
           </div>
-          <div id="nickname-error" class="profile-error" hidden></div>
-          <div id="nickname-success" class="profile-success" hidden>Nickname updated!</div>
+
+          <div class="profile-section">
+            <label for="user-id-display">User ID:</label>
+            <p id="user-id-display" class="profile-value"></p>
+          </div>
+
+          <div class="profile-section">
+            <label for="nickname-input">Nickname:</label>
+            <div class="profile-input-group">
+              <input
+                id="nickname-input"
+                type="text"
+                placeholder="Enter your nickname"
+                maxlength="100"
+              />
+              <button id="btn-save-nickname" type="button" class="profile-save-btn">Save</button>
+            </div>
+            <div id="nickname-error" class="profile-error" hidden></div>
+            <div id="nickname-success" class="profile-success" hidden>Nickname updated!</div>
+          </div>
+
         </div>
 
-        <div class="profile-actions">
-          <a href="/" class="profile-back-btn">Back to Game</a>
+        <div class="profile-card profile-stats-card">
+          <h2>Game Stats</h2>
+          <div class="profile-stats-grid">
+            <div class="profile-stat">
+              <span id="stat-total">0</span>
+              <p>Total games</p>
+            </div>
+            <div class="profile-stat">
+              <span id="stat-completed">0</span>
+              <p>In progress</p>
+            </div>
+            <div class="profile-stat">
+              <span id="stat-ready">0</span>
+              <p>Ready rooms</p>
+            </div>
+            <div class="profile-stat">
+              <span id="stat-hosted">0</span>
+              <p>Hosted</p>
+            </div>
+            <div class="profile-stat">
+              <span id="stat-joined">0</span>
+              <p>Joined</p>
+            </div>
+            <div class="profile-stat">
+              <span id="stat-waiting">0</span>
+              <p>Waiting</p>
+            </div>
+            <div class="profile-stat">
+              <span id="stat-cancelled">0</span>
+              <p>Cancelled</p>
+            </div>
+          </div>
+          <p id="profile-last-room" class="profile-stat-note"></p>
         </div>
-      </div>
-    </div>
+      </section>
+
+      <section class="profile-card profile-active-card">
+        <div class="profile-section-heading">
+          <h2>Active Rooms</h2>
+          <span id="active-room-count">0 active</span>
+        </div>
+        <div id="active-rooms-list" class="profile-room-list"></div>
+        <p id="active-rooms-empty" class="profile-empty" hidden>No active rooms right now.</p>
+      </section>
+
+      <section class="profile-card profile-history-card">
+        <div class="profile-section-heading">
+          <h2>Recent Rooms</h2>
+          <span id="profile-room-count">0 rooms</span>
+        </div>
+        <div id="recent-rooms-list" class="profile-room-list"></div>
+        <p id="recent-rooms-empty" class="profile-empty" hidden>No game rooms yet.</p>
+      </section>
+    </main>
 
     <div id="profile-loading" class="profile-loading" hidden>
       <p>Loading profile...</p>
