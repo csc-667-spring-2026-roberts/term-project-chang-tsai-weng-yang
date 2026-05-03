@@ -99,8 +99,19 @@ CREATE TABLE IF NOT EXISTS cards (
     CONSTRAINT cards_valid_color CHECK (color IN ('RED', 'BLACK'))
 );
 
+-- GAME CHAT: Store chat messages sent during a game
+CREATE TABLE IF NOT EXISTS game_chat (
+    id SERIAL PRIMARY KEY,
+    room_id VARCHAR(8) NOT NULL REFERENCES game_rooms(id) ON DELETE CASCADE,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    message TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexing for production performance on Render
 CREATE INDEX IF NOT EXISTS idx_game_cards_room ON game_cards(room_id);
 CREATE INDEX IF NOT EXISTS idx_game_cards_location ON game_cards(location);
 CREATE INDEX IF NOT EXISTS idx_game_results_user ON game_results(user_id);
 CREATE INDEX IF NOT EXISTS idx_game_results_room ON game_results(room_id);
+CREATE INDEX IF NOT EXISTS idx_game_chat_room ON game_chat(room_id);
+CREATE INDEX IF NOT EXISTS idx_game_chat_created ON game_chat(created_at);

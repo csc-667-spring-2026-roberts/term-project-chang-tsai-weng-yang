@@ -8,6 +8,7 @@
   let session = null;          // { roomId, playerId, opponentId, isPlayer1, ... }
   let opponentNickname = "Opponent";
   let selfNickname = "You";
+  let currentUserId = null;
   let gameActive = false;
   let started = false;         // has /start been called by the host?
   let eventSource = null;
@@ -162,6 +163,17 @@
 
     eventSource.addEventListener("game:update", () => {
       refreshState();
+    });
+
+    eventSource.addEventListener("game:chat", (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (window.chatReceiveMessage) {
+          window.chatReceiveMessage(data);
+        }
+      } catch (error) {
+        console.error("Error parsing chat message:", error);
+      }
     });
 
     eventSource.addEventListener("game:room_cancelled", () => {
@@ -381,7 +393,13 @@
         const d = await r.json();
         if (d.user) {
           selfNickname = d.user.nickname || d.user.email || "You";
+          currentUserId = d.user.id;
           updatePlayerLabels(lastState?.activePlayerId || session.playerId);
+          
+          // Dispatch event for chat module to use userId
+          window.dispatchEvent(new CustomEvent("game:chat:userId", {
+            detail: { userId: d.user.id }
+          }));
         }
       }
     } catch (e) { /* ignore */ }
@@ -410,6 +428,12 @@
     if (tableEmpty) tableEmpty.hidden = false;
     if (tableGame) tableGame.hidden = true;
     if (leaveButton) leaveButton.hidden = true;
+    
+    // Hide chat panel when game ends
+    if (window.chatHide) {
+      window.chatHide();
+    }
+    
     if (redirect) window.location.href = "/";
   }
 

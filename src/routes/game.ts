@@ -991,6 +991,103 @@ router.get("/rooms/:roomId/state", requireAuth, async (req: Request, res: Respon
   }
 });
 
+// POST chat message to a room
+router.post("/rooms/:roomId/chat", requireAuth, async (req: Request, res: Response) => {
+  const { roomId } = req.params;
+  const userId = getUserId(req);
+  const { message } = req.body as { message: string };
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  if (!roomId || typeof roomId !== "string") {
+    return res.status(400).json({ message: "Invalid room ID" });
+  }
+
+  if (!message || typeof message !== "string" || message.trim().length === 0) {
+    return res.status(400).json({ message: "Message cannot be empty" });
+  }
+
+  if (message.length > 500) {
+    return res.status(400).json({ message: "Message is too long (max 500 characters)" });
+  }
+
+  const roomIdUpper = roomId.toUpperCase();
+
+  try {
+    // Get user nickname
+    const userRes = await pool.query<{ nickname: string; id: number }>(
+      "SELECT id, nickname FROM users WHERE id = $1",
+      [userId],
+    );
+    const user = userRes.rows[0];
+    if (!user) {
+      return res.status(401).json({ message: "User not found" });
+    }
+
+    // Insert chat message
+    const chatRes = await pool.query(
+      "INSERT INTO game_chat (room_id, user_id, message) VALUES ($1, $2, $3) RETURNING id, created_at",
+      [roomIdUpper, userId, message.trim()],
+    );
+
+    const chatMessage = chatRes.rows[0];
+
+    // Broadcast to room
+    broadcastToRoom(`game:room:${roomIdUpper}`, {
+      event: "game:chat",
+      data: {
+        id: chatMessage.id,
+        userId: userId,
+        nickname: user.nickname || "Anonymous",
+        message: message.trim(),
+        timestamp: chatMessage.created_at,
+      },
+    });
+
+    return res.status(201).json({
+      id: chatMessage.id,
+      message: message.trim(),
+      timestamp: chatMessage.created_at,
+    });
+  } catch (error) {
+    console.error("Error sending chat message:", error);
+    return res.status(500).json({ message: "Failed to send message" });
+  }
+});
+
+// GET chat history for a room
+router.get("/rooms/:roomId/chat", requireAuth, async (req: Request, res: Response) => {
+  const { roomId } = req.params;
+  const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+
+  if (!roomId || typeof roomId !== "string") {
+    return res.status(400).json({ message: "Invalid room ID" });
+  }
+
+  const roomIdUpper = roomId.toUpperCase();
+
+  try {
+    const messages = await pool.query(
+      `SELECT c.id, c.user_id, u.nickname, c.message, c.created_at 
+       FROM game_chat c
+       JOIN users u ON c.user_id = u.id
+       WHERE c.room_id = $1
+       ORDER BY c.created_at DESC
+       LIMIT $2`,
+      [roomIdUpper, limit],
+    );
+
+    return res.status(200).json({
+      messages: messages.rows.reverse(),
+    });
+  } catch (error) {
+    console.error("Error fetching chat history:", error);
+    return res.status(500).json({ message: "Failed to fetch chat history" });
+  }
+});
+
 // Kept for potential future use
 // function getCanSelfPlayAct(
 //   room: GameRoomWithPlayer2Email | null,

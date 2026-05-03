@@ -77,9 +77,7 @@ Click the button to test /protected
         <!-- Live game view, hidden until a game is active -->
         <div id="table-game" class="table-game" hidden>
           <header class="table-header">
-            <div class="table-room">
-              Room: <strong id="hud-room">—</strong>
-            </div>
+            <div class="table-room">Room: <strong id="hud-room">—</strong></div>
             <div class="table-turn">
               <span class="turn-dot" id="hud-turn-dot"></span>
               <span id="hud-turn-text">Waiting…</span>
@@ -111,6 +109,25 @@ Click the button to test /protected
           <div id="table-message" class="table-message" hidden></div>
         </div>
       </main>
+
+      <!-- Chat Panel -->
+      <div id="chat-panel" class="chat-panel" hidden>
+        <div class="chat-header">
+          <h3>Chat</h3>
+          <button id="chat-toggle" class="chat-toggle" type="button" title="Toggle chat">−</button>
+        </div>
+        <div id="chat-messages" class="chat-messages"></div>
+        <div class="chat-input-wrapper">
+          <input
+            id="chat-input"
+            type="text"
+            class="chat-input"
+            placeholder="Type a message..."
+            maxlength="500"
+          />
+          <button id="chat-send" class="chat-send" type="button">Send</button>
+        </div>
+      </div>
     </div>
 
     <div id="auth-modal" class="auth-modal" hidden>
@@ -202,5 +219,6 @@ Click the button to test /protected
     <script type="module" src="/js/auth-ui.js"></script>
     <script type="module" src="/js/game-room.js"></script>
     <script type="module" src="/js/game-init.js"></script>
+    <script type="module" src="/js/chat.js"></script>
   </body>
 </html>
