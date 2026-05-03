@@ -68,6 +68,23 @@ CREATE TABLE IF NOT EXISTS game_cards (
     CONSTRAINT valid_location CHECK (location IN ('deck', 'discard', 'hand'))
 );
 
+-- GAME RESULTS: One row per player per finished game, used by profile stats
+CREATE TABLE IF NOT EXISTS game_results (
+    id SERIAL PRIMARY KEY,
+    room_id VARCHAR(8) NOT NULL REFERENCES game_rooms(id) ON DELETE CASCADE,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    opponent_ids INT[] DEFAULT '{}',
+    placement INT,
+    score INT DEFAULT 0,
+    deadwood_score INT DEFAULT 0,
+    went_gin BOOLEAN DEFAULT FALSE,
+    knocked BOOLEAN DEFAULT FALSE,
+    outcome VARCHAR(20) NOT NULL,
+    finished_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT game_results_room_user_unique UNIQUE (room_id, user_id),
+    CONSTRAINT game_results_valid_outcome CHECK (outcome IN ('win', 'loss', 'draw'))
+);
+
 -- CARDS LOOKUP TABLE: the static, immutable definition of all 52
 -- standard playing cards. Seeded once by database/migration.js and never
 -- written to at runtime. game_cards is the junction table that maps a
@@ -85,3 +102,5 @@ CREATE TABLE IF NOT EXISTS cards (
 -- Indexing for production performance on Render
 CREATE INDEX IF NOT EXISTS idx_game_cards_room ON game_cards(room_id);
 CREATE INDEX IF NOT EXISTS idx_game_cards_location ON game_cards(location);
+CREATE INDEX IF NOT EXISTS idx_game_results_user ON game_results(user_id);
+CREATE INDEX IF NOT EXISTS idx_game_results_room ON game_results(room_id);

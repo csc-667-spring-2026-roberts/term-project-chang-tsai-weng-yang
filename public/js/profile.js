@@ -4,6 +4,9 @@
   const profileAvatar = document.querySelector("#profile-avatar");
   const profileTitle = document.querySelector("#profile-title");
   const memberSince = document.querySelector("#profile-member-since");
+  const heroWinRate = document.querySelector("#hero-win-rate");
+  const heroWins = document.querySelector("#hero-wins");
+  const heroScore = document.querySelector("#hero-score");
   const emailDisplay = document.querySelector("#email-display");
   const userIdDisplay = document.querySelector("#user-id-display");
   const nicknameInput = document.querySelector("#nickname-input");
@@ -17,6 +20,16 @@
   const statJoined = document.querySelector("#stat-joined");
   const statWaiting = document.querySelector("#stat-waiting");
   const statCancelled = document.querySelector("#stat-cancelled");
+  const statResultGames = document.querySelector("#stat-result-games");
+  const statWins = document.querySelector("#stat-wins");
+  const statLosses = document.querySelector("#stat-losses");
+  const statDraws = document.querySelector("#stat-draws");
+  const statWinRate = document.querySelector("#stat-win-rate");
+  const statTotalScore = document.querySelector("#stat-total-score");
+  const statBestScore = document.querySelector("#stat-best-score");
+  const statAverageScore = document.querySelector("#stat-average-score");
+  const statGin = document.querySelector("#stat-gin");
+  const statKnock = document.querySelector("#stat-knock");
   const lastRoom = document.querySelector("#profile-last-room");
   const activeRoomCount = document.querySelector("#active-room-count");
   const activeRoomsList = document.querySelector("#active-rooms-list");
@@ -67,7 +80,7 @@
         : "Member profile";
     }
 
-    renderStats(data.stats || {});
+    renderStats(data.stats || {}, data.resultStats || {});
     renderRoomSection({
       rooms: data.activeRooms || [],
       countElement: activeRoomCount,
@@ -78,7 +91,7 @@
     renderRecentRooms(data.recentRooms || []);
   }
 
-  function renderStats(stats) {
+  function renderStats(stats, resultStats) {
     setText(statTotal, stats.totalGames || 0);
     setText(statCompleted, stats.activeGames || stats.completedGames || 0);
     setText(statReady, stats.readyGames || 0);
@@ -86,6 +99,19 @@
     setText(statJoined, stats.joinedGames || 0);
     setText(statWaiting, stats.waitingGames || 0);
     setText(statCancelled, stats.cancelledGames || 0);
+    setText(statResultGames, resultStats.resultGames || 0);
+    setText(statWins, resultStats.wins || 0);
+    setText(statLosses, resultStats.losses || 0);
+    setText(statDraws, resultStats.draws || 0);
+    setText(statWinRate, `${resultStats.winRate || 0}%`);
+    setText(statTotalScore, resultStats.totalScore || 0);
+    setText(statBestScore, resultStats.bestScore || 0);
+    setText(statAverageScore, resultStats.averageScore || 0);
+    setText(statGin, resultStats.ginCount || 0);
+    setText(statKnock, resultStats.knockCount || 0);
+    setText(heroWinRate, `${resultStats.winRate || 0}%`);
+    setText(heroWins, resultStats.wins || 0);
+    setText(heroScore, resultStats.totalScore || 0);
     if (lastRoom) {
       lastRoom.textContent = stats.lastRoomAt
         ? `Last room activity: ${formatDate(stats.lastRoomAt)}`

@@ -1,4 +1,5 @@
 import express, { Request, Response } from "express";
+import type { PoolClient } from "pg";
 import pool from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { broadcastToRoom } from "../sse/hub.js";
@@ -24,6 +25,48 @@ interface JoinRoomResult {
   success: boolean;
   updatedRoom?: GameRoom;
   errorMessage?: string;
+}
+
+type GameOutcome = "win" | "loss" | "draw";
+
+interface SubmittedGameResult {
+  userId?: number;
+  outcome?: GameOutcome;
+  score?: number;
+  deadwoodScore?: number;
+  wentGin?: boolean;
+  knocked?: boolean;
+  placement?: number;
+  opponentIds?: number[];
+}
+
+interface SubmitResultsBody {
+  results?: SubmittedGameResult[];
+}
+
+interface NormalizedGameResult {
+  userId: number;
+  outcome: GameOutcome;
+  score: number;
+  deadwoodScore: number;
+  wentGin: boolean;
+  knocked: boolean;
+  placement: number;
+  opponentIds: number[];
+}
+
+interface GameResultRow {
+  id: number;
+  room_id: string;
+  user_id: number;
+  opponent_ids: number[];
+  placement: number | null;
+  score: number;
+  deadwood_score: number;
+  went_gin: boolean;
+  knocked: boolean;
+  outcome: GameOutcome;
+  finished_at: string;
 }
 
 /**
@@ -87,6 +130,167 @@ async function findAndUpdatePlayerSlot(
   );
 
   return { success: true, updatedRoom };
+}
+
+function playerIdsForRoom(room: GameRoom): number[] {
+  return [room.created_by, room.player_2_id, room.player_3_id, room.player_4_id].filter(
+    (id): id is number => id !== null,
+  );
+}
+
+function isGameOutcome(value: unknown): value is GameOutcome {
+  return value === "win" || value === "loss" || value === "draw";
+}
+
+function normalizeNonNegativeInteger(value: unknown, fallback = 0): number {
+  if (value === undefined || value === null) return fallback;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) return Number.NaN;
+  return value;
+}
+
+function isValidOpponentList(
+  opponentIds: unknown,
+  userId: number,
+  playerSet: Set<number>,
+): opponentIds is number[] {
+  return (
+    Array.isArray(opponentIds) &&
+    opponentIds.every(
+      (id: unknown) =>
+        typeof id === "number" && Number.isInteger(id) && playerSet.has(id) && id !== userId,
+    )
+  );
+}
+
+function normalizeSubmittedResult(
+  result: unknown,
+  playerIds: number[],
+  playerSet: Set<number>,
+): { validResult?: NormalizedGameResult; errorMessage?: string } {
+  if (!result || typeof result !== "object") {
+    return { errorMessage: "Each result must be an object" };
+  }
+
+  const submitted = result as SubmittedGameResult;
+
+  if (!submitted.userId || !playerSet.has(submitted.userId)) {
+    return { errorMessage: "Result user must be a player in the room" };
+  }
+
+  if (!isGameOutcome(submitted.outcome)) {
+    return { errorMessage: "Result outcome must be win, loss, or draw" };
+  }
+
+  const score = normalizeNonNegativeInteger(submitted.score);
+  const deadwoodScore = normalizeNonNegativeInteger(submitted.deadwoodScore);
+  const placement = normalizeNonNegativeInteger(submitted.placement, 1);
+  const opponentIds = submitted.opponentIds ?? playerIds.filter((id) => id !== submitted.userId);
+
+  if (
+    Number.isNaN(score) ||
+    Number.isNaN(deadwoodScore) ||
+    Number.isNaN(placement) ||
+    !isValidOpponentList(opponentIds, submitted.userId, playerSet)
+  ) {
+    return { errorMessage: "Result scores, placement, and opponents must be valid" };
+  }
+
+  return {
+    validResult: {
+      userId: submitted.userId,
+      outcome: submitted.outcome,
+      score,
+      deadwoodScore,
+      wentGin: Boolean(submitted.wentGin),
+      knocked: Boolean(submitted.knocked),
+      placement,
+      opponentIds,
+    },
+  };
+}
+
+function validateSubmittedResults(
+  results: unknown,
+  playerIds: number[],
+): { validResults?: NormalizedGameResult[]; errorMessage?: string } {
+  if (!Array.isArray(results) || results.length === 0) {
+    return { errorMessage: "At least one result is required" };
+  }
+
+  const playerSet = new Set(playerIds);
+  const seenUsers = new Set<number>();
+  const validResults: NormalizedGameResult[] = [];
+
+  for (const result of results) {
+    const normalized = normalizeSubmittedResult(result, playerIds, playerSet);
+
+    if (!normalized.validResult) {
+      return { errorMessage: normalized.errorMessage };
+    }
+
+    if (seenUsers.has(normalized.validResult.userId)) {
+      return { errorMessage: "Each player can only have one result per room" };
+    }
+    seenUsers.add(normalized.validResult.userId);
+    validResults.push(normalized.validResult);
+  }
+
+  return { validResults };
+}
+
+async function saveGameResults(
+  client: PoolClient,
+  roomId: string,
+  results: NormalizedGameResult[],
+): Promise<GameResultRow[]> {
+  const savedResults: GameResultRow[] = [];
+
+  for (const result of results) {
+    const saved = await client.query<GameResultRow>(
+      `INSERT INTO game_results (
+          room_id,
+          user_id,
+          opponent_ids,
+          placement,
+          score,
+          deadwood_score,
+          went_gin,
+          knocked,
+          outcome,
+          finished_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        ON CONFLICT (room_id, user_id)
+        DO UPDATE SET
+          opponent_ids = EXCLUDED.opponent_ids,
+          placement = EXCLUDED.placement,
+          score = EXCLUDED.score,
+          deadwood_score = EXCLUDED.deadwood_score,
+          went_gin = EXCLUDED.went_gin,
+          knocked = EXCLUDED.knocked,
+          outcome = EXCLUDED.outcome,
+          finished_at = NOW()
+        RETURNING *`,
+      [
+        roomId,
+        result.userId,
+        result.opponentIds,
+        result.placement,
+        result.score,
+        result.deadwoodScore,
+        result.wentGin,
+        result.knocked,
+        result.outcome,
+      ],
+    );
+
+    const savedResult = saved.rows[0];
+    if (savedResult) {
+      savedResults.push(savedResult);
+    }
+  }
+
+  return savedResults;
 }
 
 // ============================================================================
@@ -673,6 +877,68 @@ router.post("/rooms/:roomId/discard", requireAuth, async (req: Request, res: Res
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Discard failed" });
+  }
+});
+
+router.post("/rooms/:roomId/results", requireAuth, async (req: Request, res: Response) => {
+  const { roomId } = req.params;
+  const userId = getUserId(req);
+
+  if (!roomId || typeof roomId !== "string") {
+    return res.status(400).json({ message: "Invalid room ID" });
+  }
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  const { results } = req.body as SubmitResultsBody;
+  const roomIdUpper = roomId.toUpperCase();
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const roomResult = await client.query<GameRoom>("SELECT * FROM game_rooms WHERE id = $1", [
+      roomIdUpper,
+    ]);
+    const room = roomResult.rows[0];
+
+    if (!room) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ message: "Room not found" });
+    }
+
+    if (room.created_by !== userId) {
+      await client.query("ROLLBACK");
+      return res.status(403).json({ message: "Only the host can record game results" });
+    }
+
+    const playerIds = playerIdsForRoom(room);
+    const validation = validateSubmittedResults(results, playerIds);
+    if (!validation.validResults) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ message: validation.errorMessage });
+    }
+
+    const savedResults = await saveGameResults(client, roomIdUpper, validation.validResults);
+    await client.query("COMMIT");
+
+    broadcastToRoom(`game:room:${roomIdUpper}`, {
+      event: "game:results_recorded",
+      data: {
+        roomId: roomIdUpper,
+        results: savedResults,
+      },
+    });
+
+    return res.status(200).json({ results: savedResults });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error recording game results:", error);
+    return res.status(500).json({ message: "Failed to record game results" });
+  } finally {
+    client.release();
   }
 });
 

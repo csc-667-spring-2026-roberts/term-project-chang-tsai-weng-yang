@@ -24,6 +24,18 @@ interface ProfileStatsRow {
   last_room_at: string | null;
 }
 
+interface ResultStatsRow {
+  result_games: string;
+  wins: string;
+  losses: string;
+  draws: string;
+  total_score: string;
+  average_score: string | null;
+  best_score: string | null;
+  gin_count: string;
+  knock_count: string;
+}
+
 interface RecentRoomRow {
   id: string;
   status: string;
@@ -84,6 +96,38 @@ async function getProfileStats(userId: number): Promise<ProfileStatsRow> {
       waiting_games: "0",
       cancelled_games: "0",
       last_room_at: null,
+    }
+  );
+}
+
+async function getResultStats(userId: number): Promise<ResultStatsRow> {
+  const result = await pool.query<ResultStatsRow>(
+    `SELECT
+        COUNT(*) AS result_games,
+        COUNT(*) FILTER (WHERE outcome = 'win') AS wins,
+        COUNT(*) FILTER (WHERE outcome = 'loss') AS losses,
+        COUNT(*) FILTER (WHERE outcome = 'draw') AS draws,
+        COALESCE(SUM(score), 0) AS total_score,
+        ROUND(AVG(score)::numeric, 1) AS average_score,
+        MAX(score) AS best_score,
+        COUNT(*) FILTER (WHERE went_gin) AS gin_count,
+        COUNT(*) FILTER (WHERE knocked) AS knock_count
+     FROM game_results
+     WHERE user_id = $1`,
+    [userId],
+  );
+
+  return (
+    result.rows[0] || {
+      result_games: "0",
+      wins: "0",
+      losses: "0",
+      draws: "0",
+      total_score: "0",
+      average_score: null,
+      best_score: null,
+      gin_count: "0",
+      knock_count: "0",
     }
   );
 }
@@ -149,6 +193,24 @@ function formatStats(stats: ProfileStatsRow): Record<string, number | string | n
     waitingGames: Number(stats.waiting_games),
     cancelledGames: Number(stats.cancelled_games),
     lastRoomAt: stats.last_room_at,
+  };
+}
+
+function formatResultStats(stats: ResultStatsRow): Record<string, number> {
+  const games = Number(stats.result_games);
+  const wins = Number(stats.wins);
+
+  return {
+    resultGames: games,
+    wins,
+    losses: Number(stats.losses),
+    draws: Number(stats.draws),
+    winRate: games > 0 ? Math.round((wins / games) * 100) : 0,
+    totalScore: Number(stats.total_score),
+    averageScore: Number(stats.average_score || 0),
+    bestScore: Number(stats.best_score || 0),
+    ginCount: Number(stats.gin_count),
+    knockCount: Number(stats.knock_count),
   };
 }
 
@@ -223,8 +285,9 @@ router.get("/summary", requireAuth, async (req: Request, res: Response) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const [stats, recentRooms, activeRooms] = await Promise.all([
+    const [stats, resultStats, recentRooms, activeRooms] = await Promise.all([
       getProfileStats(userId),
+      getResultStats(userId),
       getRecentRooms(userId),
       getActiveRooms(userId),
     ]);
@@ -232,6 +295,7 @@ router.get("/summary", requireAuth, async (req: Request, res: Response) => {
     return res.status(200).json({
       user,
       stats: formatStats(stats),
+      resultStats: formatResultStats(resultStats),
       activeRooms: activeRooms.map((room) => formatRecentRoom(room, userId)),
       recentRooms: recentRooms.map((room) => formatRecentRoom(room, userId)),
     });
