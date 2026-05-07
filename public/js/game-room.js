@@ -22,6 +22,7 @@
 
   // Create Room Elements
   const btnCreateRoom = document.querySelector("#btn-create-room");
+  const btnPracticeSolo = document.querySelector("#btn-practice-solo");
   const createError = document.querySelector("#create-error");
   const createLoading = document.querySelector("#create-loading");
   const createSuccess = document.querySelector("#create-success");
@@ -87,6 +88,7 @@
     }
 
     if (btnCreateRoom) btnCreateRoom.addEventListener("click", () => createRoom());
+    if (btnPracticeSolo) btnPracticeSolo.addEventListener("click", () => createPracticeRoom());
     if (btnCancelWait) btnCancelWait.addEventListener("click", () => cancelWaiting());
 
     if (btnNewGame) {
@@ -272,6 +274,49 @@
       console.error("Error creating room:", error);
       showError(createError, "Network error. Please try again.");
       hideLoading(createLoading);
+    }
+  }
+
+  async function createPracticeRoom() {
+    await getCurrentUserId();
+    if (!currentUserId) {
+      showError(createError, "Authentication required");
+      return;
+    }
+
+    clearError(createError);
+    showLoading(createLoading);
+    if (btnPracticeSolo) btnPracticeSolo.disabled = true;
+
+    try {
+      const response = await fetch("/api/game/rooms/practice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({}),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        showError(createError, data.message || "Failed to start practice game");
+        return;
+      }
+
+      currentRoomId = data.roomId;
+      iAmHost = true;
+      playerCount = data.playerCount || 2;
+      gameStarted = false;
+      startGameOnMatch({
+        roomId: data.roomId,
+        opponentId: data.opponentId,
+        selfPlay: true,
+      });
+    } catch (error) {
+      console.error("Error starting practice game:", error);
+      showError(createError, "Network error. Please try again.");
+    } finally {
+      hideLoading(createLoading);
+      if (btnPracticeSolo) btnPracticeSolo.disabled = false;
     }
   }
 
@@ -494,7 +539,9 @@
     const gameSession = {
       roomId: currentRoomId || roomData.roomId,
       playerId: currentUserId,
-      isPlayer1: iAmHost,
+      opponentId: roomData.opponentId,
+      selfPlay: Boolean(roomData.selfPlay),
+      isPlayer1: iAmHost && !roomData.selfPlay,
       startedAt: Date.now(),
     };
 

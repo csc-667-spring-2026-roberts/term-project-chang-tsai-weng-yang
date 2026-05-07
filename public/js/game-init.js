@@ -5,39 +5,42 @@
   const SUIT_GLYPH = { H: "♥", D: "♦", C: "♣", S: "♠" };
 
   // Local state
-  let session = null;          // { roomId, playerId, opponentId, isPlayer1, ... }
+  let session = null; // { roomId, playerId, opponentId, isPlayer1, ... }
   let opponentNickname = "Opponent";
   let selfNickname = "You";
   let currentUserId = null;
   let gameActive = false;
-  let started = false;         // has /start been called by the host?
+  let started = false; // has /start been called by the host?
   let eventSource = null;
   let selectedCardId = null;
-  let lastState = null;        // last response from /state
+  let lastState = null; // last response from /state
 
   // DOM lookups
   const $ = (sel) => document.querySelector(sel);
-  const tableEmpty   = $("#table-empty");
-  const tableGame    = $("#table-game");
+  const tableEmpty = $("#table-empty");
+  const tableGame = $("#table-game");
   const opponentHand = $("#opponent-hand");
-  const selfHand     = $("#self-hand");
-  const discardTop   = $("#discard-top");
-  const deckCount    = $("#deck-count");
-  const hudRoom      = $("#hud-room");
-  const hudTurnText  = $("#hud-turn-text");
-  const hudTurnDot   = $("#hud-turn-dot");
-  const hudOpponent  = $("#hud-opponent-name");
-  const hudSelf      = $("#hud-self-name");
+  const selfHand = $("#self-hand");
+  const discardTop = $("#discard-top");
+  const deckCount = $("#deck-count");
+  const hudRoom = $("#hud-room");
+  const hudTurnText = $("#hud-turn-text");
+  const hudTurnDot = $("#hud-turn-dot");
+  const hudDeadwood = $("#hud-deadwood");
+  const hudOpponent = $("#hud-opponent-name");
+  const hudSelf = $("#hud-self-name");
   const tableMessage = $("#table-message");
-  const leaveButton  = $("#btn-leave-game");
+  const leaveButton = $("#btn-leave-game");
+  const roundResults = $("#round-results");
+  const roundResultsList = $("#round-results-list");
 
   // Action affordances. The deck and discard piles in the center ARE the
   // draw buttons. We toggle .disabled on them to gate clicks. The sidebar
   // only keeps Discard (commit a selected card) and Knock (placeholder).
-  const btnDiscard  = $("#btn-discard");
-  const btnSort     = $("#btn-sort");
-  const btnKnock    = $("#btn-knock");
-  const pileDeck    = $("#pile-deck");
+  const btnDiscard = $("#btn-discard");
+  const btnSort = $("#btn-sort");
+  const btnKnock = $("#btn-knock");
+  const pileDeck = $("#pile-deck");
   const pileDiscard = $("#pile-discard");
 
   // Boot
@@ -165,6 +168,10 @@
       refreshState();
     });
 
+    eventSource.addEventListener("game:finished", () => {
+      refreshState();
+    });
+
     eventSource.addEventListener("game:chat", (event) => {
       try {
         const data = JSON.parse(event.data);
@@ -189,17 +196,32 @@
   // Rendering
   function render(state) {
     if (!state || !state.cards) return;
+    if (roundResults) roundResults.hidden = !state.finished;
 
-    const me        = state.activePlayerId || session.playerId;
-    const myHand    = state.cards.filter((c) => c.location === "hand" && c.player_id === me);
-    const deck      = state.cards.filter((c) => c.location === "deck");
-    const discardP  = state.cards.filter((c) => c.location === "discard");
+    const me = state.activePlayerId || session.playerId;
+    const myHand = state.cards.filter((c) => c.location === "hand" && c.player_id === me);
+    const deck = state.cards.filter((c) => c.location === "deck");
+    const discardP = state.cards.filter((c) => c.location === "discard");
 
-    const RANK_ORDER = { A: 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7,
-      "8": 8, "9": 9, "10": 10, J: 11, Q: 12, K: 13 };
+    const RANK_ORDER = {
+      A: 1,
+      2: 2,
+      3: 3,
+      4: 4,
+      5: 5,
+      6: 6,
+      7: 7,
+      8: 8,
+      9: 9,
+      10: 10,
+      J: 11,
+      Q: 12,
+      K: 13,
+    };
     const SUIT_ORDER = { S: 0, H: 1, C: 2, D: 3 };
-    myHand.sort((a, b) =>
-      SUIT_ORDER[a.suit] - SUIT_ORDER[b.suit] || RANK_ORDER[a.rank] - RANK_ORDER[b.rank]);
+    myHand.sort(
+      (a, b) => SUIT_ORDER[a.suit] - SUIT_ORDER[b.suit] || RANK_ORDER[a.rank] - RANK_ORDER[b.rank],
+    );
 
     if (selectedCardId && !myHand.some((c) => c.id === selectedCardId)) {
       selectedCardId = null;
@@ -216,7 +238,7 @@
     opponentHand.replaceChildren();
     const allPlayers = state.activePlayers || []; // List of all player IDs
     const otherPlayers = allPlayers.filter((id) => id !== me);
-    
+
     for (const playerId of otherPlayers) {
       const oppHand = state.cards.filter((c) => c.location === "hand" && c.player_id === playerId);
       for (let i = 0; i < oppHand.length; i++) {
@@ -251,7 +273,15 @@
     const myTurn = !!state.isMyTurn;
     updatePlayerLabels(me);
     hudTurnDot.classList.toggle("your-turn", myTurn);
-    hudTurnText.textContent = myTurn ? "Your turn" : `${opponentNickname}'s turn`;
+    hudTurnText.textContent = state.finished
+      ? "Round finished"
+      : myTurn
+        ? "Your turn"
+        : `${opponentNickname}'s turn`;
+    if (hudDeadwood) {
+      hudDeadwood.textContent = String(state.currentDeadwood ?? "—");
+    }
+    renderResults(state);
 
     // Pile and button gating.
     // 2 players: 10 cards = haven't drawn yet (must draw); 11 cards = have drawn (must discard).
@@ -259,13 +289,21 @@
     const handSize = myHand.length;
     const playerCount = state.playerCount || 2;
     const cardsPerPlayer = playerCount === 2 ? 10 : 7;
-    const mustDraw    = myTurn && handSize === cardsPerPlayer;
-    const mustDiscard = myTurn && handSize >= (cardsPerPlayer + 1);
+    const mustDraw = myTurn && handSize === cardsPerPlayer;
+    const mustDiscard = myTurn && handSize >= cardsPerPlayer + 1;
 
     pileDeck.classList.toggle("disabled", !(mustDraw && deck.length > 0));
     pileDiscard.classList.toggle("disabled", !(mustDraw && !!showTop));
     btnDiscard.disabled = !(mustDiscard && selectedCardId !== null);
-    btnKnock.disabled = true; // not implemented
+    btnKnock.disabled = !(mustDiscard && selectedCardId !== null);
+    btnKnock.textContent = "Gin / Knock";
+
+    if (state.finished) {
+      pileDeck.classList.add("disabled");
+      pileDiscard.classList.add("disabled");
+      btnDiscard.disabled = true;
+      btnKnock.disabled = true;
+    }
   }
 
   function buildCard(card, faceUp) {
@@ -298,12 +336,12 @@
       const playerCount = lastState.playerCount || 2;
       const cardsPerPlayer = playerCount === 2 ? 10 : 7;
       const maxHandSizeBeforeDiscard = cardsPerPlayer;
-      
+
       if (myHandSize <= maxHandSizeBeforeDiscard) {
         flashMessage("Draw a card first.");
         return;
       }
-      selectedCardId = (selectedCardId === card.id) ? null : card.id;
+      selectedCardId = selectedCardId === card.id ? null : card.id;
       render(lastState);
     });
 
@@ -363,6 +401,18 @@
       refreshState();
     });
 
+    btnKnock?.addEventListener("click", async () => {
+      if (btnKnock.disabled || selectedCardId === null || !lastState) return;
+      const data = await postAction("declare", { discardCardId: selectedCardId });
+      if (data) {
+        selectedCardId = null;
+        flashMessage(
+          data.declaration === "gin" ? "Gin! Round finished." : "Knock accepted. Round finished.",
+        );
+        refreshState();
+      }
+    });
+
     btnSort?.addEventListener("click", () => {
       if (lastState) render(lastState);
     });
@@ -384,7 +434,9 @@
           opponentNickname = d.nickname || "Opponent";
           updatePlayerLabels(lastState?.activePlayerId || session.playerId);
         }
-      } catch (e) { /* ignore */ }
+      } catch (e) {
+        /* ignore */
+      }
     }
 
     try {
@@ -395,14 +447,18 @@
           selfNickname = d.user.nickname || d.user.email || "You";
           currentUserId = d.user.id;
           updatePlayerLabels(lastState?.activePlayerId || session.playerId);
-          
+
           // Dispatch event for chat module to use userId
-          window.dispatchEvent(new CustomEvent("game:chat:userId", {
-            detail: { userId: d.user.id }
-          }));
+          window.dispatchEvent(
+            new CustomEvent("game:chat:userId", {
+              detail: { userId: d.user.id },
+            }),
+          );
         }
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
   }
 
   function flashMessage(msg) {
@@ -412,7 +468,32 @@
     tableMessage.style.animation = "none";
     void tableMessage.offsetWidth; // force reflow
     tableMessage.style.animation = "";
-    setTimeout(() => { if (tableMessage) tableMessage.hidden = true; }, 3000);
+    setTimeout(() => {
+      if (tableMessage) tableMessage.hidden = true;
+    }, 3000);
+  }
+
+  function renderResults(state) {
+    if (!roundResultsList) return;
+    roundResultsList.replaceChildren();
+
+    if (!state.finished || !Array.isArray(state.results) || state.results.length === 0) {
+      return;
+    }
+
+    for (const result of state.results) {
+      const row = document.createElement("div");
+      row.className = `round-result round-result-${result.outcome}`;
+
+      const name = document.createElement("strong");
+      name.textContent = result.user_id === currentUserId ? "You" : `Player ${result.user_id}`;
+
+      const detail = document.createElement("span");
+      detail.textContent = `${result.outcome.toUpperCase()} · deadwood ${result.deadwood_score} · score ${result.score}`;
+
+      row.append(name, detail);
+      roundResultsList.appendChild(row);
+    }
   }
 
   function endGame(redirect) {
@@ -428,12 +509,13 @@
     if (tableEmpty) tableEmpty.hidden = false;
     if (tableGame) tableGame.hidden = true;
     if (leaveButton) leaveButton.hidden = true;
-    
+    if (roundResults) roundResults.hidden = true;
+
     // Hide chat panel when game ends
     if (window.chatHide) {
       window.chatHide();
     }
-    
+
     if (redirect) window.location.href = "/";
   }
 
@@ -448,7 +530,9 @@
           method: "POST",
           credentials: "same-origin",
         });
-      } catch (e) { /* ignore, leaving anyway */ }
+      } catch (e) {
+        /* ignore, leaving anyway */
+      }
     }
     endGame(true);
   }
