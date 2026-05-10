@@ -101,6 +101,15 @@ interface TurnActor {
   room: GameRoom;
 }
 
+interface PublicGameCard {
+  id: number;
+  suit: string | null;
+  rank: string | null;
+  location: string;
+  player_id: number | null;
+  card_order: number;
+}
+
 /**
  * Find available player slot and update room
  */
@@ -168,6 +177,41 @@ function playerIdsForRoom(room: GameRoom): number[] {
   return [room.created_by, room.player_2_id, room.player_3_id, room.player_4_id].filter(
     (id): id is number => id !== null,
   );
+}
+
+function visiblePlayerIdForState(
+  room: GameRoom | null,
+  selfPlay: boolean,
+  sessionUserId: number,
+  turnUserId: number | undefined,
+): number {
+  if (selfPlay && room?.created_by === sessionUserId && turnUserId === room.player_2_id) {
+    return turnUserId;
+  }
+
+  return sessionUserId;
+}
+
+function serializeCardsForViewer(
+  cards: GameCard[],
+  visiblePlayerId: number,
+  revealAll: boolean,
+): PublicGameCard[] {
+  return cards.map((card) => {
+    const visible =
+      revealAll ||
+      card.location === "discard" ||
+      (card.location === "hand" && card.player_id === visiblePlayerId);
+
+    return {
+      id: card.id,
+      suit: visible ? card.suit : null,
+      rank: visible ? card.rank : null,
+      location: card.location,
+      player_id: card.player_id,
+      card_order: card.card_order,
+    };
+  });
 }
 
 function isGameOutcome(value: unknown): value is GameOutcome {
@@ -1358,27 +1402,34 @@ router.get("/rooms/:roomId/state", requireAuth, async (req: Request, res: Respon
           (id): id is number => id !== null,
         )
       : [];
-    const activePlayerHand = cards.rows.filter(
-      (card) => card.location === "hand" && card.player_id === turnUserId,
-    );
+
+    if (!room) {
+      return res.status(404).json({ message: "Room not found" });
+    }
+
+    if (!activePlayers.includes(userId)) {
+      return res.status(403).json({ message: "You are not in this room" });
+    }
+
+    const finished = results.rows.length > 0;
+    const viewerPlayerId = visiblePlayerIdForState(room, selfPlay, userId, turnUserId);
     const currentUserHand = cards.rows.filter(
-      (card) => card.location === "hand" && card.player_id === userId,
+      (card) => card.location === "hand" && card.player_id === viewerPlayerId,
     );
     const currentEvaluation = evaluateHand(currentUserHand);
-    const activeEvaluation = evaluateHand(activePlayerHand);
-    const finished = results.rows.length > 0;
+    const publicCards = serializeCardsForViewer(cards.rows, viewerPlayerId, finished);
 
     return res.json({
-      cards: cards.rows,
+      cards: publicCards,
       turn: turnUserId,
       isMyTurn:
         !finished && (turnUserId === userId || (selfPlay && turnUserId === room?.player_2_id)),
       activePlayerId: turnUserId,
+      viewerPlayerId,
       activePlayers: activePlayers,
       playerCount: activePlayers.length,
       selfPlay: selfPlay,
       currentDeadwood: currentEvaluation.deadwood,
-      activeDeadwood: activeEvaluation.deadwood,
       currentMelds: currentEvaluation.melds,
       currentDeadwoodCards: currentEvaluation.deadwoodCards,
       finished,

@@ -343,7 +343,7 @@
 
   function setIdleState() {
     if (chatPanel) {
-      chatPanel.hidden = false;
+      chatPanel.hidden = true;
       chatPanel.classList.remove("minimized", "sending");
     }
     if (chatLauncher) {

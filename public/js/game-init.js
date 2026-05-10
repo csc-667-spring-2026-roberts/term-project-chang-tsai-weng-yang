@@ -198,7 +198,7 @@
     if (!state || !state.cards) return;
     if (roundResults) roundResults.hidden = !state.finished;
 
-    const me = state.activePlayerId || session.playerId;
+    const me = state.viewerPlayerId || session.playerId;
     const myHand = state.cards.filter((c) => c.location === "hand" && c.player_id === me);
     const deck = state.cards.filter((c) => c.location === "deck");
     const discardP = state.cards.filter((c) => c.location === "discard");
@@ -328,7 +328,7 @@
 
     el.addEventListener("click", () => {
       if (!lastState || !lastState.isMyTurn) return;
-      const activePlayerId = lastState.activePlayerId || session.playerId;
+      const activePlayerId = lastState.viewerPlayerId || session.playerId;
       const myHandSize = lastState.cards.filter(
         (c) => c.location === "hand" && c.player_id === activePlayerId,
       ).length;
@@ -432,7 +432,7 @@
         if (r.ok) {
           const d = await r.json();
           opponentNickname = d.nickname || "Opponent";
-          updatePlayerLabels(lastState?.activePlayerId || session.playerId);
+          updatePlayerLabels(lastState?.viewerPlayerId || session.playerId);
         }
       } catch (e) {
         /* ignore */
@@ -446,7 +446,7 @@
         if (d.user) {
           selfNickname = d.user.nickname || d.user.email || "You";
           currentUserId = d.user.id;
-          updatePlayerLabels(lastState?.activePlayerId || session.playerId);
+          updatePlayerLabels(lastState?.viewerPlayerId || session.playerId);
 
           // Dispatch event for chat module to use userId
           window.dispatchEvent(

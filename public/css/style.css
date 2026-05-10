@@ -36,6 +36,10 @@ body {
   min-height: 100vh;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 /* ─── Nav ───────────────────────────────────────────────────────────────────── */
 nav {
   background: linear-gradient(90deg, #0a1520 0%, var(--surface) 100%);
@@ -337,12 +341,15 @@ nav a:hover {
   overflow: hidden;
   position: relative;
   min-width: 0;
+  min-height: 0;
 }
 
 .table-empty {
   margin: auto;
   text-align: center;
   color: var(--text);
+  max-width: 560px;
+  padding: 28px;
 }
 
 .table-empty h2 {
@@ -353,6 +360,8 @@ nav a:hover {
 
 .table-empty p {
   color: var(--text-muted);
+  margin: 0;
+  line-height: 1.5;
 }
 
 .table-game {
@@ -704,6 +713,7 @@ nav a:hover {
 @media (max-width: 700px) {
   .game-table {
     padding: 12px;
+    min-height: 420px;
   }
   .pile-card {
     width: 60px;
@@ -717,62 +727,6 @@ nav a:hover {
   .card .card-suit {
     font-size: 1.1rem;
   }
-}
-
-/* ─── Auth Demo Panel ───────────────────────────────────────────────────────── */
-.auth-demo-panel {
-  margin-top: 8px;
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px;
-}
-
-.auth-demo-panel h3 {
-  margin: 0 0 10px;
-  font-size: 0.8rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-
-.auth-demo-text {
-  margin: 0 0 10px;
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  line-height: 1.5;
-}
-
-.auth-demo-button {
-  width: 100%;
-  border: 0;
-  background: linear-gradient(135deg, #1a5c35, #217a44);
-  color: #a0f0c0;
-  padding: 9px 14px;
-  border-radius: var(--radius);
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.82rem;
-  font-weight: 600;
-  transition: all 0.2s;
-}
-
-.auth-demo-button:hover {
-  background: linear-gradient(135deg, #217a44, #2a9957);
-  color: #ccffdd;
-}
-
-.protected-route-result {
-  margin: 10px 0 0;
-  padding: 10px;
-  border-radius: var(--radius);
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid var(--border);
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  font-family: "Courier New", monospace;
 }
 
 /* ─── Auth Modal ────────────────────────────────────────────────────────────── */
@@ -2114,19 +2068,18 @@ nav a:hover {
 
 /* ─── Chat Panel ───────────────────────────────────────────────────────────── */
 .chat-panel {
-  position: absolute;
-  right: 16px;
-  top: 16px;
-  bottom: 16px;
+  position: relative;
   z-index: 20;
   display: flex;
   flex-direction: column;
-  width: 320px;
+  flex: 0 0 clamp(280px, 24vw, 340px);
+  align-self: stretch;
+  width: clamp(280px, 24vw, 340px);
   min-width: 280px;
   max-width: 360px;
+  min-height: 0;
   height: auto;
-  max-height: 720px;
-  margin: 0;
+  margin: 12px 12px 12px 0;
   background: rgba(12, 22, 34, 0.9);
   backdrop-filter: blur(14px);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -2144,8 +2097,10 @@ nav a:hover {
 }
 
 .chat-panel.minimized {
+  flex-basis: 240px;
   height: 54px;
   max-height: 54px;
+  align-self: flex-start;
 }
 
 .chat-header {
@@ -2504,10 +2459,18 @@ nav a:hover {
   }
 
   .chat-panel {
+    position: absolute;
     right: 10px;
     top: auto;
     bottom: 10px;
+    flex: none;
+    align-self: auto;
     width: min(340px, calc(100vw - 24px));
     height: min(62vh, 560px);
+    margin: 0;
+  }
+
+  .chat-panel.minimized {
+    width: min(340px, calc(100vw - 24px));
   }
 }
