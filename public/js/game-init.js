@@ -233,20 +233,36 @@
       selfHand.appendChild(buildCard(card, true));
     }
 
-    // Opponent(s) hand (face-down backs)
-    // For 3-4 player games, show all other players' cards
+    // Opponent seats. In 3-4 player games, each opponent gets a separate
+    // visible hand instead of merging every back into one long row.
     opponentHand.replaceChildren();
     const allPlayers = state.activePlayers || []; // List of all player IDs
     const otherPlayers = allPlayers.filter((id) => id !== me);
+    const playerCount = state.playerCount || allPlayers.length || 2;
+    const cardsPerPlayer = playerCount === 2 ? 10 : 7;
 
-    for (const playerId of otherPlayers) {
+    otherPlayers.forEach((playerId, index) => {
       const oppHand = state.cards.filter((c) => c.location === "hand" && c.player_id === playerId);
-      for (let i = 0; i < oppHand.length; i++) {
+      const visibleBacks = normalizeOpponentBackCount(oppHand.length, cardsPerPlayer);
+      const seat = document.createElement("div");
+      seat.className = "opponent-seat";
+
+      const seatLabel = document.createElement("div");
+      seatLabel.className = "opponent-seat-label";
+      seatLabel.textContent =
+        playerCount > 2 ? `Opponent ${index + 1} · ${visibleBacks}` : `Opponent · ${visibleBacks}`;
+
+      const seatHand = document.createElement("div");
+      seatHand.className = "hand opponent-seat-hand";
+
+      for (let i = 0; i < visibleBacks; i++) {
         const back = document.createElement("div");
         back.className = "card back";
-        opponentHand.appendChild(back);
+        seatHand.appendChild(back);
       }
-    }
+      seat.append(seatLabel, seatHand);
+      opponentHand.appendChild(seat);
+    });
 
     // Deck count
     deckCount.textContent = String(deck.length);
@@ -287,8 +303,6 @@
     // 2 players: 10 cards = haven't drawn yet (must draw); 11 cards = have drawn (must discard).
     // 3-4 players: 7 cards = haven't drawn yet (must draw); 8 cards = have drawn (must discard).
     const handSize = myHand.length;
-    const playerCount = state.playerCount || 2;
-    const cardsPerPlayer = playerCount === 2 ? 10 : 7;
     const mustDraw = myTurn && handSize === cardsPerPlayer;
     const mustDiscard = myTurn && handSize >= cardsPerPlayer + 1;
 
@@ -304,6 +318,12 @@
       btnDiscard.disabled = true;
       btnKnock.disabled = true;
     }
+  }
+
+  function normalizeOpponentBackCount(handSize, cardsPerPlayer) {
+    if (!Number.isFinite(handSize) || handSize < 0) return cardsPerPlayer;
+    const maxExpectedDuringTurn = cardsPerPlayer + 1;
+    return Math.min(handSize, maxExpectedDuringTurn);
   }
 
   function buildCard(card, faceUp) {
