@@ -1,5 +1,4 @@
 import { attachLoginForm } from '/js/login.js';
-import { attachProtectedRouteTester } from '/js/protected-route.js';
 import { attachRegisterForm } from '/js/register.js';
 
 const modal = document.getElementById('auth-modal');
@@ -13,7 +12,6 @@ const loginPanel = document.getElementById('login-panel');
 const registerPanel = document.getElementById('register-panel');
 const loginContent = document.getElementById('login-content');
 const registerContent = document.getElementById('register-content');
-const authSessionState = document.getElementById('auth-session-state');
 const sessionBanner = document.getElementById('session-banner');
 const sessionTemplate = document.querySelector('#session-banner-tpl');
 
@@ -89,11 +87,6 @@ function updateAuthButtons(authenticated) {
     profileLink.hidden = !authenticated;
   }
 
-  if (authSessionState instanceof HTMLElement) {
-    authSessionState.textContent = authenticated
-      ? 'Session active. Protected route should succeed.'
-      : 'Logged out. Protected route should return 401.';
-  }
 }
 
 async function refreshSessionBadge() {
@@ -264,8 +257,6 @@ async function initAuthUi() {
       }
     });
   }
-
-  attachProtectedRouteTester();
 
   try {
     const session = await fetchSession();

@@ -89,7 +89,7 @@
         }
         try {
           const payload = JSON.parse(event.data);
-          const msg = typeof payload.message === "string" ? payload.message : String(event.data);
+          const msg = typeof payload.message === "string" ? payload.message : event.data;
           el.textContent = `${(/* @__PURE__ */ new Date()).toLocaleTimeString()}: ${msg}`;
         } catch {
           el.textContent = event.data;

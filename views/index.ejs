@@ -36,8 +36,8 @@
 
     <div id="app">
       <div id="sidebar">
-        <button id="btn-new-game">New Game</button>
-        <button id="btn-sort">Sort Hand</button>
+        <button id="btn-new-game" type="button">New Game</button>
+        <button id="btn-sort" type="button">Sort Hand</button>
         <hr />
         <p class="rule-label"><strong>How to Play:</strong></p>
         <p class="rule-label">
@@ -49,22 +49,6 @@
         </p>
         <p class="rule-label">Sort by suit/rank with <strong>Sort Hand</strong>.</p>
         <p class="rule-label">First player to a clean meld can <strong>Knock</strong>.</p>
-        <hr />
-        <div id="action-buttons">
-          <button id="btn-discard" disabled>Discard</button>
-          <button id="btn-knock" disabled>Knock!</button>
-        </div>
-        <hr />
-        <section class="auth-demo-panel">
-          <h3>Auth Demo</h3>
-          <p id="auth-session-state" class="auth-demo-text">Checking session...</p>
-          <button id="check-protected-route" class="auth-demo-button" type="button">
-            Visit Protected Route
-          </button>
-          <pre id="protected-route-result" class="protected-route-result">
-Click the button to test /protected
-          </pre>
-        </section>
       </div>
 
       <main id="table" class="game-table">
@@ -77,13 +61,12 @@ Click the button to test /protected
         <!-- Live game view, hidden until a game is active -->
         <div id="table-game" class="table-game" hidden>
           <header class="table-header">
-            <div class="table-room">
-              Room: <strong id="hud-room">—</strong>
-            </div>
+            <div class="table-room">Room: <strong id="hud-room">—</strong></div>
             <div class="table-turn">
               <span class="turn-dot" id="hud-turn-dot"></span>
               <span id="hud-turn-text">Waiting…</span>
             </div>
+            <div class="table-deadwood">Deadwood: <strong id="hud-deadwood">—</strong></div>
             <button id="btn-leave-game" type="button" class="hud-leave-btn">Leave</button>
           </header>
 
@@ -108,9 +91,82 @@ Click the button to test /protected
             <div class="player-label" id="hud-self-name">You</div>
           </section>
 
+          <section class="table-actions" aria-label="Game actions">
+            <p class="table-actions-hint">Draw, choose one card, then discard or declare.</p>
+            <div id="action-buttons">
+              <button id="btn-discard" class="game-action-btn action-discard" type="button" disabled>
+                Discard selected
+              </button>
+              <button id="btn-knock" class="game-action-btn action-declare" type="button" disabled>
+                Gin / Knock
+              </button>
+            </div>
+          </section>
+
           <div id="table-message" class="table-message" hidden></div>
+          <section id="round-results" class="round-results" hidden>
+            <h3>Round Results</h3>
+            <div id="round-results-list" class="round-results-list"></div>
+          </section>
         </div>
       </main>
+
+      <!-- Chat Panel -->
+      <div id="chat-panel" class="chat-panel">
+        <div class="chat-header">
+          <div>
+            <h3>Room Chat</h3>
+            <p id="chat-room-label" class="chat-room-label">No active room</p>
+          </div>
+          <div class="chat-header-actions">
+            <span id="chat-unread" class="chat-unread" hidden>0</span>
+            <button
+              id="chat-toggle"
+              class="chat-toggle"
+              type="button"
+              title="Toggle chat"
+              aria-label="Toggle chat"
+              aria-expanded="true"
+            >
+              −
+            </button>
+            <button
+              id="chat-close"
+              class="chat-close"
+              type="button"
+              title="Close chat"
+              aria-label="Close chat"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+        <div id="chat-status" class="chat-status" role="status" aria-live="polite">
+          Start or join a game room to chat with other players.
+        </div>
+        <div id="chat-messages" class="chat-messages" aria-live="polite"></div>
+        <div class="chat-input-wrapper">
+          <input
+            id="chat-input"
+            type="text"
+            class="chat-input"
+            placeholder="Message the room"
+            maxlength="500"
+            autocomplete="off"
+            aria-label="Chat message"
+            disabled
+          />
+          <button id="chat-send" class="chat-send" type="button" disabled>Send</button>
+          <div class="chat-input-meta">
+            <span id="chat-error" class="chat-error" role="alert"></span>
+            <span id="chat-count" class="chat-count">0/500</span>
+          </div>
+        </div>
+      </div>
+      <button id="chat-launcher" class="chat-launcher" type="button" hidden>
+        <span>Chat</span>
+        <span id="chat-launcher-unread" class="chat-launcher-unread" hidden>0</span>
+      </button>
     </div>
 
     <div id="auth-modal" class="auth-modal" hidden>
@@ -172,6 +228,9 @@ Click the button to test /protected
           <button id="btn-create-room" type="button" class="game-room-action-btn">
             Create Room
           </button>
+          <button id="btn-practice-solo" type="button" class="game-room-action-btn solo-action-btn">
+            Practice Solo
+          </button>
           <div id="create-error" class="game-room-error" hidden></div>
           <div id="create-loading" class="game-room-loading" hidden>Creating room...</div>
           <div id="create-success" class="game-room-success" hidden>
@@ -202,5 +261,6 @@ Click the button to test /protected
     <script type="module" src="/js/auth-ui.js"></script>
     <script type="module" src="/js/game-room.js"></script>
     <script type="module" src="/js/game-init.js"></script>
+    <script type="module" src="/js/chat.js"></script>
   </body>
 </html>

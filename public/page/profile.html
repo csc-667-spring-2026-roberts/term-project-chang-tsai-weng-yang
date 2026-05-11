@@ -26,35 +26,174 @@
       </div>
     </nav>
 
-    <div id="profile-container" class="profile-container" hidden>
-      <div class="profile-card">
-        <h1>User Profile</h1>
-
-        <div class="profile-section">
-          <label for="email-display">Email:</label>
-          <p id="email-display" class="profile-value"></p>
-        </div>
-
-        <div class="profile-section">
-          <label for="nickname-input">Nickname:</label>
-          <div class="profile-input-group">
-            <input
-              id="nickname-input"
-              type="text"
-              placeholder="Enter your nickname"
-              maxlength="100"
-            />
-            <button id="btn-save-nickname" type="button" class="profile-save-btn">Save</button>
+    <main id="profile-container" class="profile-container" hidden>
+      <section class="profile-card profile-hero">
+        <div class="profile-hero-main">
+          <div id="profile-avatar" class="profile-avatar">GR</div>
+          <div>
+            <p class="profile-kicker">Player Profile</p>
+            <h1 id="profile-title">Your Gin Rummy Profile</h1>
+            <p id="profile-member-since" class="profile-subtitle"></p>
           </div>
-          <div id="nickname-error" class="profile-error" hidden></div>
-          <div id="nickname-success" class="profile-success" hidden>Nickname updated!</div>
+        </div>
+        <div class="profile-hero-metrics" aria-label="Profile performance summary">
+          <div>
+            <span id="hero-win-rate">0%</span>
+            <p>Win rate</p>
+          </div>
+          <div>
+            <span id="hero-wins">0</span>
+            <p>Wins</p>
+          </div>
+          <div>
+            <span id="hero-score">0</span>
+            <p>Total score</p>
+          </div>
+        </div>
+        <a href="/" class="profile-back-btn">Back to Game</a>
+      </section>
+
+      <section class="profile-grid">
+        <div class="profile-card profile-details-card">
+          <div class="profile-card-heading">
+            <span class="profile-card-icon" aria-hidden="true">A</span>
+            <h2>Account</h2>
+          </div>
+          <div class="profile-section">
+            <label for="email-display">Email:</label>
+            <p id="email-display" class="profile-value"></p>
+          </div>
+
+          <div class="profile-section">
+            <label for="user-id-display">User ID:</label>
+            <p id="user-id-display" class="profile-value"></p>
+          </div>
+
+          <div class="profile-section">
+            <label for="nickname-input">Nickname:</label>
+            <div class="profile-input-group">
+              <input
+                id="nickname-input"
+                type="text"
+                placeholder="Enter your nickname"
+                maxlength="100"
+              />
+              <button id="btn-save-nickname" type="button" class="profile-save-btn">Save</button>
+            </div>
+            <div id="nickname-error" class="profile-error" hidden></div>
+            <div id="nickname-success" class="profile-success" hidden>Nickname updated!</div>
+          </div>
+
         </div>
 
-        <div class="profile-actions">
-          <a href="/" class="profile-back-btn">Back to Game</a>
+        <div class="profile-card profile-stats-card">
+          <div class="profile-card-heading">
+            <span class="profile-card-icon profile-card-icon-blue" aria-hidden="true">S</span>
+            <h2>Game Stats</h2>
+          </div>
+          <dl class="profile-compact-stats">
+            <div>
+              <dt>Total games</dt>
+              <dd id="stat-total">0</dd>
+            </div>
+            <div>
+              <dt>In progress</dt>
+              <dd id="stat-completed">0</dd>
+            </div>
+            <div>
+              <dt>Ready rooms</dt>
+              <dd id="stat-ready">0</dd>
+            </div>
+            <div>
+              <dt>Hosted</dt>
+              <dd id="stat-hosted">0</dd>
+            </div>
+            <div>
+              <dt>Joined</dt>
+              <dd id="stat-joined">0</dd>
+            </div>
+            <div>
+              <dt>Waiting</dt>
+              <dd id="stat-waiting">0</dd>
+            </div>
+            <div>
+              <dt>Cancelled</dt>
+              <dd id="stat-cancelled">0</dd>
+            </div>
+          </dl>
+          <p id="profile-last-room" class="profile-stat-note"></p>
         </div>
-      </div>
-    </div>
+
+        <div class="profile-card profile-results-card">
+          <div class="profile-card-heading">
+            <span class="profile-card-icon profile-card-icon-green" aria-hidden="true">P</span>
+            <h2>Performance</h2>
+          </div>
+          <div class="profile-performance-summary">
+            <div class="profile-performance-primary">
+              <span id="stat-win-rate">0%</span>
+              <p>Win rate</p>
+            </div>
+            <dl class="profile-compact-stats profile-performance-stats">
+              <div>
+                <dt>Finished games</dt>
+                <dd id="stat-result-games">0</dd>
+              </div>
+              <div>
+                <dt>Wins</dt>
+                <dd id="stat-wins">0</dd>
+              </div>
+              <div>
+                <dt>Losses</dt>
+                <dd id="stat-losses">0</dd>
+              </div>
+              <div>
+                <dt>Draws</dt>
+                <dd id="stat-draws">0</dd>
+              </div>
+              <div>
+                <dt>Total score</dt>
+                <dd id="stat-total-score">0</dd>
+              </div>
+              <div>
+                <dt>Best score</dt>
+                <dd id="stat-best-score">0</dd>
+              </div>
+              <div>
+                <dt>Avg score</dt>
+                <dd id="stat-average-score">0</dd>
+              </div>
+              <div>
+                <dt>Gin</dt>
+                <dd id="stat-gin">0</dd>
+              </div>
+              <div>
+                <dt>Knock</dt>
+                <dd id="stat-knock">0</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+      </section>
+
+      <section class="profile-card profile-active-card">
+        <div class="profile-section-heading">
+          <h2>Active Rooms</h2>
+          <span id="active-room-count">0 active</span>
+        </div>
+        <div id="active-rooms-list" class="profile-room-list"></div>
+        <p id="active-rooms-empty" class="profile-empty" hidden>No active rooms right now.</p>
+      </section>
+
+      <section class="profile-card profile-history-card">
+        <div class="profile-section-heading">
+          <h2>Recent Rooms</h2>
+          <span id="profile-room-count">0 rooms</span>
+        </div>
+        <div id="recent-rooms-list" class="profile-room-list"></div>
+        <p id="recent-rooms-empty" class="profile-empty" hidden>No game rooms yet.</p>
+      </section>
+    </main>
 
     <div id="profile-loading" class="profile-loading" hidden>
       <p>Loading profile...</p>

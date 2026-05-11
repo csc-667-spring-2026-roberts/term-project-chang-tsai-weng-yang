@@ -1,72 +1,628 @@
 import express, { Request, Response } from "express";
-import { randomBytes } from "crypto";
+import type { PoolClient } from "pg";
 import pool from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { broadcastToRoom } from "../sse/hub.js";
 import { createDeck, shuffle } from "../utils/cards.js";
+import {
+  canDeclareGin,
+  canDeclareKnock,
+  containsCard,
+  evaluateHand,
+  removeDiscardForDeclaration,
+  scoreFinishedRound,
+  type FinishDeclaration,
+  type PlayerFinishResult,
+} from "../utils/gin-rummy.js";
+import {
+  getUserId,
+  sessionRoom,
+  generateRoomId,
+  getActingUserId,
+  GameRoom,
+  GameState,
+  GameCard,
+  getRoomWithSelfPlay,
+  dealCards,
+  selfPlayEmailFor,
+} from "../middleware/game.js";
+
 const router = express.Router();
 
-function getUserId(req: Request): number | null {
-  return req.session.userId || null;
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+interface JoinRoomResult {
+  success: boolean;
+  updatedRoom?: GameRoom;
+  errorMessage?: string;
 }
 
-function sessionRoom(req: Request): string | null {
-  return req.sessionID ? `session:${req.sessionID}` : null;
+type GameOutcome = "win" | "loss" | "draw";
+
+interface SubmittedGameResult {
+  userId?: number;
+  outcome?: GameOutcome;
+  score?: number;
+  deadwoodScore?: number;
+  wentGin?: boolean;
+  knocked?: boolean;
+  placement?: number;
+  opponentIds?: number[];
 }
 
-function generateRoomId(): string {
-  return randomBytes(3).toString("hex").toUpperCase();
+interface SubmitResultsBody {
+  results?: SubmittedGameResult[];
 }
 
-interface GameRoom {
-  id: string;
-  created_by: number;
-  player_2_id: number | null;
-  status: string;
-  created_at: string;
-  matched_at: string | null;
+interface FinishRoundBody {
+  discardCardId?: number;
 }
 
-interface GameState {
-  room_id: string;
-  turn_user_id: number;
+interface NormalizedGameResult {
+  userId: number;
+  outcome: GameOutcome;
+  score: number;
+  deadwoodScore: number;
+  wentGin: boolean;
+  knocked: boolean;
+  placement: number;
+  opponentIds: number[];
 }
 
-interface GameCard {
+interface GameResultRow {
   id: number;
-  suit: string;
-  rank: string;
+  room_id: string;
+  user_id: number;
+  opponent_ids: number[];
+  placement: number | null;
+  score: number;
+  deadwood_score: number;
+  went_gin: boolean;
+  knocked: boolean;
+  outcome: GameOutcome;
+  finished_at: string;
+}
+
+interface ChatInsertRow {
+  id: number;
+  created_at: string;
+}
+
+interface FinishSetup {
+  playerIds: number[];
+  handByPlayer: Map<number, GameCard[]>;
+}
+
+interface TurnActor {
+  actingUserId: number;
+  turnUserId: number;
+  room: GameRoom;
+}
+
+interface PublicGameCard {
+  id: number;
+  suit: string | null;
+  rank: string | null;
   location: string;
   player_id: number | null;
   card_order: number;
 }
 
+/**
+ * Find available player slot and update room
+ */
+async function findAndUpdatePlayerSlot(
+  room: GameRoom,
+  userId: number,
+  roomId: string,
+): Promise<JoinRoomResult> {
+  let updateQuery = "";
+  let updateParams: (string | number)[] = [];
+  let playerSlot = "";
+
+  if (room.player_2_id === null) {
+    playerSlot = "player_2";
+    updateQuery =
+      "UPDATE game_rooms SET player_2_id = $1, status = 'waiting_to_start', matched_at = NOW() WHERE id = $2 AND (status = 'waiting' OR status = 'waiting_to_start') RETURNING *";
+    updateParams = [userId, roomId.toUpperCase()];
+    console.log(`[JOIN] Player ${String(userId)} taking slot ${playerSlot} in room ${roomId}`);
+  } else if (room.player_3_id === null) {
+    playerSlot = "player_3";
+    updateQuery =
+      "UPDATE game_rooms SET player_3_id = $1, status = 'waiting_to_start' WHERE id = $2 AND (status = 'waiting' OR status = 'waiting_to_start') RETURNING *";
+    updateParams = [userId, roomId.toUpperCase()];
+    console.log(`[JOIN] Player ${String(userId)} taking slot ${playerSlot} in room ${roomId}`);
+  } else if (room.player_4_id === null) {
+    playerSlot = "player_4";
+    updateQuery =
+      "UPDATE game_rooms SET player_4_id = $1, status = 'waiting_to_start' WHERE id = $2 AND (status = 'waiting' OR status = 'waiting_to_start') RETURNING *";
+    updateParams = [userId, roomId.toUpperCase()];
+    console.log(`[JOIN] Player ${String(userId)} taking slot ${playerSlot} in room ${roomId}`);
+  } else {
+    console.log(`[JOIN] Room ${roomId} is full`);
+    return { success: false, errorMessage: "Room is full (4 players max)" };
+  }
+
+  console.log(
+    `[JOIN] Executing UPDATE for ${playerSlot}: ${updateQuery.substring(0, 60)}... with params [${String(updateParams)}]`,
+  );
+  const updateResult = await pool.query<GameRoom>(updateQuery, updateParams);
+  const updatedRoom = updateResult.rows[0];
+
+  if (!updatedRoom) {
+    const currentRoom = await pool.query<GameRoom>("SELECT * FROM game_rooms WHERE id = $1", [
+      roomId.toUpperCase(),
+    ]);
+    const current = currentRoom.rows[0];
+    const status = current?.status ?? "unknown";
+    console.log(
+      `[JOIN] Current room status in DB: '${status}' | Player slots: P2=${String(current?.player_2_id)}, P3=${String(current?.player_3_id)}, P4=${String(current?.player_4_id)}`,
+    );
+    return {
+      success: false,
+      errorMessage: `Failed to join room - status is '${status}' (expected 'waiting' or 'waiting_to_start')`,
+    };
+  }
+
+  console.log(
+    `[JOIN] Successfully updated room. New status: '${updatedRoom.status}' | Players: P2=${String(updatedRoom.player_2_id)}, P3=${String(updatedRoom.player_3_id)}, P4=${String(updatedRoom.player_4_id)}`,
+  );
+
+  return { success: true, updatedRoom };
+}
+
+function playerIdsForRoom(room: GameRoom): number[] {
+  return [room.created_by, room.player_2_id, room.player_3_id, room.player_4_id].filter(
+    (id): id is number => id !== null,
+  );
+}
+
+function visiblePlayerIdForState(
+  room: GameRoom | null,
+  selfPlay: boolean,
+  sessionUserId: number,
+  turnUserId: number | undefined,
+): number {
+  if (selfPlay && room?.created_by === sessionUserId && turnUserId === room.player_2_id) {
+    return turnUserId;
+  }
+
+  return sessionUserId;
+}
+
+function serializeCardsForViewer(
+  cards: GameCard[],
+  visiblePlayerId: number,
+  revealAll: boolean,
+): PublicGameCard[] {
+  return cards.map((card) => {
+    const visible =
+      revealAll ||
+      card.location === "discard" ||
+      (card.location === "hand" && card.player_id === visiblePlayerId);
+
+    return {
+      id: card.id,
+      suit: visible ? card.suit : null,
+      rank: visible ? card.rank : null,
+      location: card.location,
+      player_id: card.player_id,
+      card_order: card.card_order,
+    };
+  });
+}
+
+function isGameOutcome(value: unknown): value is GameOutcome {
+  return value === "win" || value === "loss" || value === "draw";
+}
+
+function normalizeNonNegativeInteger(value: unknown, fallback = 0): number {
+  if (value === undefined || value === null) return fallback;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) return Number.NaN;
+  return value;
+}
+
+function isValidOpponentList(
+  opponentIds: unknown,
+  userId: number,
+  playerSet: Set<number>,
+): opponentIds is number[] {
+  return (
+    Array.isArray(opponentIds) &&
+    opponentIds.every(
+      (id: unknown) =>
+        typeof id === "number" && Number.isInteger(id) && playerSet.has(id) && id !== userId,
+    )
+  );
+}
+
+function normalizeSubmittedResult(
+  result: unknown,
+  playerIds: number[],
+  playerSet: Set<number>,
+): { validResult?: NormalizedGameResult; errorMessage?: string } {
+  if (!result || typeof result !== "object") {
+    return { errorMessage: "Each result must be an object" };
+  }
+
+  const submitted = result as SubmittedGameResult;
+
+  if (!submitted.userId || !playerSet.has(submitted.userId)) {
+    return { errorMessage: "Result user must be a player in the room" };
+  }
+
+  if (!isGameOutcome(submitted.outcome)) {
+    return { errorMessage: "Result outcome must be win, loss, or draw" };
+  }
+
+  const score = normalizeNonNegativeInteger(submitted.score);
+  const deadwoodScore = normalizeNonNegativeInteger(submitted.deadwoodScore);
+  const placement = normalizeNonNegativeInteger(submitted.placement, 1);
+  const opponentIds = submitted.opponentIds ?? playerIds.filter((id) => id !== submitted.userId);
+
+  if (
+    Number.isNaN(score) ||
+    Number.isNaN(deadwoodScore) ||
+    Number.isNaN(placement) ||
+    !isValidOpponentList(opponentIds, submitted.userId, playerSet)
+  ) {
+    return { errorMessage: "Result scores, placement, and opponents must be valid" };
+  }
+
+  return {
+    validResult: {
+      userId: submitted.userId,
+      outcome: submitted.outcome,
+      score,
+      deadwoodScore,
+      wentGin: Boolean(submitted.wentGin),
+      knocked: Boolean(submitted.knocked),
+      placement,
+      opponentIds,
+    },
+  };
+}
+
+function validateSubmittedResults(
+  results: unknown,
+  playerIds: number[],
+): { validResults?: NormalizedGameResult[]; errorMessage?: string } {
+  if (!Array.isArray(results) || results.length === 0) {
+    return { errorMessage: "At least one result is required" };
+  }
+
+  const playerSet = new Set(playerIds);
+  const seenUsers = new Set<number>();
+  const validResults: NormalizedGameResult[] = [];
+
+  for (const result of results) {
+    const normalized = normalizeSubmittedResult(result, playerIds, playerSet);
+
+    if (!normalized.validResult) {
+      return { errorMessage: normalized.errorMessage };
+    }
+
+    if (seenUsers.has(normalized.validResult.userId)) {
+      return { errorMessage: "Each player can only have one result per room" };
+    }
+    seenUsers.add(normalized.validResult.userId);
+    validResults.push(normalized.validResult);
+  }
+
+  return { validResults };
+}
+
+function normalizedResultsFromFinish(
+  results: PlayerFinishResult[],
+  playerIds: number[],
+): NormalizedGameResult[] {
+  return results.map((result) => ({
+    userId: result.userId,
+    outcome: result.outcome,
+    score: result.score,
+    deadwoodScore: result.deadwood,
+    wentGin: result.wentGin,
+    knocked: result.knocked,
+    placement: result.placement,
+    opponentIds: playerIds.filter((id) => id !== result.userId),
+  }));
+}
+
+async function saveGameResults(
+  client: PoolClient,
+  roomId: string,
+  results: NormalizedGameResult[],
+): Promise<GameResultRow[]> {
+  const savedResults: GameResultRow[] = [];
+
+  for (const result of results) {
+    const saved = await client.query<GameResultRow>(
+      `INSERT INTO game_results (
+          room_id,
+          user_id,
+          opponent_ids,
+          placement,
+          score,
+          deadwood_score,
+          went_gin,
+          knocked,
+          outcome,
+          finished_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        ON CONFLICT (room_id, user_id)
+        DO UPDATE SET
+          opponent_ids = EXCLUDED.opponent_ids,
+          placement = EXCLUDED.placement,
+          score = EXCLUDED.score,
+          deadwood_score = EXCLUDED.deadwood_score,
+          went_gin = EXCLUDED.went_gin,
+          knocked = EXCLUDED.knocked,
+          outcome = EXCLUDED.outcome,
+          finished_at = NOW()
+        RETURNING *`,
+      [
+        roomId,
+        result.userId,
+        result.opponentIds,
+        result.placement,
+        result.score,
+        result.deadwoodScore,
+        result.wentGin,
+        result.knocked,
+        result.outcome,
+      ],
+    );
+
+    const savedResult = saved.rows[0];
+    if (savedResult) {
+      savedResults.push(savedResult);
+    }
+  }
+
+  return savedResults;
+}
+
+async function roomHasResults(roomId: string): Promise<boolean> {
+  const result = await pool.query<{ exists: boolean }>(
+    "SELECT EXISTS (SELECT 1 FROM game_results WHERE room_id = $1) AS exists",
+    [roomId],
+  );
+  return Boolean(result.rows[0]?.exists);
+}
+
+async function ensureSelfPlayUser(client: PoolClient, hostUserId: number): Promise<number> {
+  const email = selfPlayEmailFor(hostUserId);
+  const result = await client.query<{ id: number }>(
+    `INSERT INTO users (email, password_hash, nickname)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (email)
+     DO UPDATE SET nickname = EXCLUDED.nickname
+     RETURNING id`,
+    [email, "self-play-local-user", "Practice Opponent"],
+  );
+  const user = result.rows[0];
+  if (!user) {
+    throw new Error("Failed to create practice opponent");
+  }
+  return user.id;
+}
+
+async function getTurnActor(roomId: string, sessionUserId: number): Promise<TurnActor | null> {
+  const [{ room, selfPlay }, state] = await Promise.all([
+    getRoomWithSelfPlay(roomId),
+    pool.query<GameState>("SELECT turn_user_id FROM game_state WHERE room_id = $1", [roomId]),
+  ]);
+  const turnUserId = state.rows[0]?.turn_user_id;
+  if (!room || !turnUserId) return null;
+
+  const actingUserId = getActingUserId(room, selfPlay, sessionUserId, turnUserId);
+  if (actingUserId !== turnUserId) return null;
+
+  return { actingUserId, turnUserId, room };
+}
+
+async function loadFinishSetup(
+  client: PoolClient,
+  roomId: string,
+  declarerId: number,
+): Promise<{ setup?: FinishSetup; errorMessage?: string }> {
+  const roomResult = await client.query<GameRoom>("SELECT * FROM game_rooms WHERE id = $1", [
+    roomId,
+  ]);
+  const room = roomResult.rows[0];
+  if (!room) return { errorMessage: "Room not found" };
+
+  const alreadyFinished = await client.query<{ exists: boolean }>(
+    "SELECT EXISTS (SELECT 1 FROM game_results WHERE room_id = $1) AS exists",
+    [roomId],
+  );
+  if (alreadyFinished.rows[0]?.exists) {
+    return { errorMessage: "Round is already finished" };
+  }
+
+  const state = await client.query<GameState>(
+    "SELECT turn_user_id FROM game_state WHERE room_id = $1",
+    [roomId],
+  );
+  if (state.rows[0]?.turn_user_id !== declarerId) {
+    return { errorMessage: "Not your turn!" };
+  }
+
+  const playerIds = playerIdsForRoom(room);
+  if (!playerIds.includes(declarerId)) {
+    return { errorMessage: "You are not in this room" };
+  }
+
+  const cards = await client.query<GameCard>(
+    "SELECT id, suit, rank, location, player_id, card_order FROM game_cards WHERE room_id = $1",
+    [roomId],
+  );
+  const handByPlayer = new Map<number, GameCard[]>();
+  for (const playerId of playerIds) {
+    handByPlayer.set(
+      playerId,
+      cards.rows.filter((card) => card.location === "hand" && card.player_id === playerId),
+    );
+  }
+
+  return { setup: { playerIds, handByPlayer } };
+}
+
+async function applyDeclarationDiscard(
+  client: PoolClient,
+  roomId: string,
+  declarerId: number,
+  handByPlayer: Map<number, GameCard[]>,
+  discardCardId: number | undefined,
+): Promise<{ declarerHand?: GameCard[]; errorMessage?: string }> {
+  const declarerHand = handByPlayer.get(declarerId) ?? [];
+  if (discardCardId === undefined) {
+    return { declarerHand };
+  }
+  if (!containsCard(declarerHand, discardCardId)) {
+    return { errorMessage: "Choose a card from your hand to discard before declaring" };
+  }
+
+  const scoringHand = removeDiscardForDeclaration(declarerHand, discardCardId);
+  await client.query(
+    `UPDATE game_cards
+        SET location = 'discard',
+            player_id = NULL,
+            card_order = COALESCE((SELECT MAX(card_order) + 1 FROM game_cards WHERE room_id = $2), 0)
+      WHERE id = $1 AND room_id = $2 AND player_id = $3`,
+    [discardCardId, roomId, declarerId],
+  );
+  handByPlayer.set(declarerId, scoringHand);
+
+  return { declarerHand: scoringHand };
+}
+
+async function finishRound(
+  roomId: string,
+  declarerId: number,
+  declaration: FinishDeclaration,
+  discardCardId?: number,
+): Promise<{
+  results?: GameResultRow[];
+  finishResults?: PlayerFinishResult[];
+  errorMessage?: string;
+}> {
+  const roomIdUpper = roomId.toUpperCase();
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const { setup, errorMessage: setupError } = await loadFinishSetup(
+      client,
+      roomIdUpper,
+      declarerId,
+    );
+    if (!setup) {
+      await client.query("ROLLBACK");
+      return { errorMessage: setupError };
+    }
+
+    const { declarerHand, errorMessage: discardError } = await applyDeclarationDiscard(
+      client,
+      roomIdUpper,
+      declarerId,
+      setup.handByPlayer,
+      discardCardId,
+    );
+    if (!declarerHand) {
+      await client.query("ROLLBACK");
+      return { errorMessage: discardError };
+    }
+
+    const declarerEvaluation = evaluateHand(declarerHand);
+    if (declaration === "gin" && !canDeclareGin(declarerHand)) {
+      await client.query("ROLLBACK");
+      return {
+        errorMessage: `Gin requires 0 deadwood. Current deadwood is ${String(declarerEvaluation.deadwood)}.`,
+      };
+    }
+    if (declaration === "knock" && !canDeclareKnock(declarerHand)) {
+      await client.query("ROLLBACK");
+      return {
+        errorMessage: `Knock requires 1-10 deadwood. Current deadwood is ${String(declarerEvaluation.deadwood)}.`,
+      };
+    }
+
+    const finishResults = scoreFinishedRound(setup.handByPlayer, declarerId, declaration);
+    const savedResults = await saveGameResults(
+      client,
+      roomIdUpper,
+      normalizedResultsFromFinish(finishResults, setup.playerIds),
+    );
+
+    await client.query("COMMIT");
+
+    broadcastToRoom(`game:room:${roomIdUpper}`, {
+      event: "game:finished",
+      data: {
+        roomId: roomIdUpper,
+        declaration,
+        declarerId,
+        results: finishResults,
+      },
+    });
+
+    return { results: savedResults, finishResults };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error finishing round:", error);
+    return { errorMessage: "Failed to finish round" };
+  } finally {
+    client.release();
+  }
+}
+
+// ============================================================================
+// ROUTE HANDLERS
+// ============================================================================
+
+// Create a new game room
 router.post("/rooms/create", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req);
     if (!userId) {
       return res.status(401).json({ message: "Unauthorized" });
     }
+
     const roomId = generateRoomId();
+
     const result = await pool.query<GameRoom>(
       "INSERT INTO game_rooms (id, created_by, status) VALUES ($1, $2, 'waiting') RETURNING *",
       [roomId, userId],
     );
+
     const room = result.rows[0];
     if (!room) {
       return res.status(500).json({ message: "Failed to create room" });
     }
+
     const sessionRoomId = sessionRoom(req);
     if (sessionRoomId) {
       broadcastToRoom(sessionRoomId, {
         event: "game:room_created",
-        data: { roomId: room.id, status: room.status },
+        data: {
+          roomId: room.id,
+          status: room.status,
+        },
       });
     }
+
     broadcastToRoom("game:waiting", {
       event: "game:room_available",
-      data: { roomId: room.id },
+      data: {
+        roomId: room.id,
+      },
     });
+
     return res.status(201).json(room);
   } catch (error) {
     console.error("Error creating room:", error);
@@ -74,70 +630,154 @@ router.post("/rooms/create", requireAuth, async (req: Request, res: Response) =>
   }
 });
 
+router.post("/rooms/practice", requireAuth, async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  const roomId = generateRoomId();
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+    const opponentId = await ensureSelfPlayUser(client, userId);
+    const roomResult = await client.query<GameRoom>(
+      `INSERT INTO game_rooms (id, created_by, player_2_id, status, matched_at, started_at)
+       VALUES ($1, $2, $3, 'completed', NOW(), NOW())
+       RETURNING *`,
+      [roomId, userId, opponentId],
+    );
+    const room = roomResult.rows[0];
+    if (!room) {
+      await client.query("ROLLBACK");
+      return res.status(500).json({ message: "Failed to create practice room" });
+    }
+
+    const playerIds = [userId, opponentId];
+    await client.query(
+      "INSERT INTO game_state (room_id, turn_user_id) VALUES ($1, $2) ON CONFLICT (room_id) DO UPDATE SET turn_user_id = $2",
+      [room.id, userId],
+    );
+    const cardsPerPlayer = await dealCards(client, room.id, playerIds, createDeck, shuffle);
+    await client.query("COMMIT");
+
+    return res.status(201).json({
+      roomId: room.id,
+      playerId: userId,
+      opponentId,
+      playerCount: playerIds.length,
+      cardsPerPlayer,
+      selfPlay: true,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error creating practice room:", error);
+    return res.status(500).json({ message: "Failed to create practice room" });
+  } finally {
+    client.release();
+  }
+});
+
+// Join an existing game room
 router.post("/rooms/join", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req);
     if (!userId) {
       return res.status(401).json({ message: "Unauthorized" });
     }
+
     const { roomId } = req.body as { roomId?: string };
+
     if (!roomId || typeof roomId !== "string") {
       return res.status(400).json({ message: "Room ID is required" });
     }
+
     const roomResult = await pool.query<GameRoom>("SELECT * FROM game_rooms WHERE id = $1", [
       roomId.toUpperCase(),
     ]);
+
     const room = roomResult.rows[0];
     if (!room) {
       return res.status(404).json({ message: "Room not found" });
     }
-    if (room.status !== "waiting") {
-      return res.status(400).json({ message: "Room is not available" });
+
+    // Allow joining during 'waiting' or 'waiting_to_start' status
+    if (room.status !== "waiting" && room.status !== "waiting_to_start") {
+      console.log(`[JOIN] Room ${roomId} status is '${room.status}' - not available for joining`);
+      return res.status(400).json({ message: `Room is not available (status: ${room.status})` });
     }
-    if (room.created_by === userId) {
-      return res.status(400).json({ message: "Cannot join your own room" });
+
+    // Check if user is already in the room
+    if (
+      room.created_by === userId ||
+      room.player_2_id === userId ||
+      room.player_3_id === userId ||
+      room.player_4_id === userId
+    ) {
+      return res.status(400).json({ message: "You are already in this room" });
     }
-    const updateResult = await pool.query<GameRoom>(
-      "UPDATE game_rooms SET player_2_id = $1, status = 'matched', matched_at = NOW() WHERE id = $2 RETURNING *",
-      [userId, roomId.toUpperCase()],
-    );
-    const updatedRoom = updateResult.rows[0];
+
+    // Find available slot and update room
+    const joinResult = await findAndUpdatePlayerSlot(room, userId, roomId);
+    if (!joinResult.success) {
+      return res.status(400).json({ message: joinResult.errorMessage });
+    }
+
+    const updatedRoom = joinResult.updatedRoom;
     if (!updatedRoom) {
-      return res.status(500).json({ message: "Failed to join room" });
+      return res.status(500).json({ message: "Failed to update room" });
     }
+
+    // Get all players info for broadcast
+    const playerIds = [
+      updatedRoom.created_by,
+      updatedRoom.player_2_id,
+      updatedRoom.player_3_id,
+      updatedRoom.player_4_id,
+    ].filter((id): id is number => id !== null);
+
     broadcastToRoom(`game:room:${roomId.toUpperCase()}`, {
-      event: "game:matched",
+      event: "game:player_joined",
       data: {
         roomId: updatedRoom.id,
-        player1Id: updatedRoom.created_by,
-        player2Id: updatedRoom.player_2_id,
+        players: playerIds,
+        playerCount: playerIds.length,
         status: updatedRoom.status,
       },
     });
+
     const sessionRoomId = sessionRoom(req);
     if (sessionRoomId) {
       broadcastToRoom(sessionRoomId, {
-        event: "game:matched",
-        data: { roomId: updatedRoom.id, opponent: room.created_by },
+        event: "game:player_joined",
+        data: {
+          roomId: updatedRoom.id,
+          playerCount: playerIds.length,
+        },
       });
     }
-    return res.status(200).json(updatedRoom);
+
+    return res.status(200).json({ ...updatedRoom, self_play: false });
   } catch (error) {
     console.error("Error joining room:", error);
     return res.status(500).json({ message: "Server error" });
   }
 });
 
+// Get waiting rooms
 router.get("/rooms/waiting", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req);
     if (!userId) {
       return res.status(401).json({ message: "Unauthorized" });
     }
+
     const result = await pool.query<GameRoom>(
       "SELECT id, created_by, created_at FROM game_rooms WHERE status = 'waiting' AND created_by != $1 LIMIT 10",
       [userId],
     );
+
     return res.status(200).json(result.rows);
   } catch (error) {
     console.error("Error fetching waiting rooms:", error);
@@ -145,19 +785,23 @@ router.get("/rooms/waiting", requireAuth, async (req: Request, res: Response) =>
   }
 });
 
+// Get room by ID
 router.get("/rooms/:roomId", requireAuth, async (req: Request, res: Response) => {
   try {
     const roomId = req.params.roomId;
     if (!roomId || typeof roomId !== "string") {
       return res.status(400).json({ message: "Invalid room ID" });
     }
+
     const result = await pool.query<GameRoom>("SELECT * FROM game_rooms WHERE id = $1", [
       roomId.toUpperCase(),
     ]);
+
     const room = result.rows[0];
     if (!room) {
       return res.status(404).json({ message: "Room not found" });
     }
+
     return res.status(200).json(room);
   } catch (error) {
     console.error("Error fetching room:", error);
@@ -165,56 +809,76 @@ router.get("/rooms/:roomId", requireAuth, async (req: Request, res: Response) =>
   }
 });
 
+// Subscribe to room updates (SSE endpoint)
 router.get("/rooms/:roomId/subscribe", requireAuth, (req: Request, res: Response): void => {
   const roomId = req.params.roomId;
   if (!roomId || typeof roomId !== "string") {
     res.status(400).json({ message: "Invalid room ID" });
     return;
   }
+
   const roomIdUpper = roomId.toUpperCase();
+
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
+
   res.write(`event: subscribed\ndata: ${JSON.stringify({ room: `game:room:${roomIdUpper}` })}\n\n`);
+
   const timer = setInterval(() => {
     res.write(`event: ping\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`);
   }, 25000);
+
+  // FIXED: Removed async from close listener and added proper cleanup
   req.on("close", () => {
     clearInterval(timer);
     res.end();
   });
 });
 
+// Cancel a room
 router.post("/rooms/:roomId/cancel", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req);
     if (!userId) {
       return res.status(401).json({ message: "Unauthorized" });
     }
+
     const roomId = req.params.roomId;
     if (!roomId || typeof roomId !== "string") {
       return res.status(400).json({ message: "Invalid room ID" });
     }
+
     const roomIdUpper = roomId.toUpperCase();
+
     const result = await pool.query<GameRoom>(
       "UPDATE game_rooms SET status = 'cancelled' WHERE id = $1 AND created_by = $2 AND status = 'waiting' RETURNING *",
       [roomIdUpper, userId],
     );
+
     const room = result.rows[0];
+
     if (!room) {
       return res.status(400).json({
         message:
-          "Room cannot be cancelled. It may not exist, you arent the host, or its already matched.",
+          "Room cannot be cancelled. It may not exist, you aren't the host, or it's already matched.",
       });
     }
+
     broadcastToRoom(`game:room:${roomIdUpper}`, {
       event: "game:room_cancelled",
-      data: { roomId: room.id },
+      data: {
+        roomId: room.id,
+      },
     });
+
     broadcastToRoom("game:waiting", {
       event: "game:room_removed",
-      data: { roomId: room.id },
+      data: {
+        roomId: room.id,
+      },
     });
+
     return res.status(200).json(room);
   } catch (error) {
     console.error("Error cancelling room:", error);
@@ -222,17 +886,22 @@ router.post("/rooms/:roomId/cancel", requireAuth, async (req: Request, res: Resp
   }
 });
 
+// Leave an in-progress (or any) game. Either participant can call this.
+// Marks the room cancelled and broadcasts game:room_cancelled so the
+// other player's client can tear down its game view in real time.
 router.post("/rooms/:roomId/leave", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req);
     if (!userId) {
       return res.status(401).json({ message: "Unauthorized" });
     }
+
     const roomId = req.params.roomId;
     if (!roomId || typeof roomId !== "string") {
       return res.status(400).json({ message: "Invalid room ID" });
     }
     const roomIdUpper = roomId.toUpperCase();
+
     const result = await pool.query<GameRoom>(
       `UPDATE game_rooms
          SET status = 'cancelled'
@@ -242,20 +911,27 @@ router.post("/rooms/:roomId/leave", requireAuth, async (req: Request, res: Respo
        RETURNING *`,
       [roomIdUpper, userId],
     );
+
     const room = result.rows[0];
     if (!room) {
       return res
         .status(400)
-        .json({ message: "Room not found, already cancelled, or you are not in it." });
+        .json({ message: "Room not found, already cancelled, or you're not in it." });
     }
+
     broadcastToRoom(`game:room:${roomIdUpper}`, {
       event: "game:room_cancelled",
-      data: { roomId: room.id, leftBy: userId },
+      data: {
+        roomId: room.id,
+        leftBy: userId,
+      },
     });
+
     broadcastToRoom("game:waiting", {
       event: "game:room_removed",
       data: { roomId: room.id },
     });
+
     return res.status(200).json(room);
   } catch (error) {
     console.error("Error leaving room:", error);
@@ -266,53 +942,89 @@ router.post("/rooms/:roomId/leave", requireAuth, async (req: Request, res: Respo
 router.post("/rooms/:roomId/start", requireAuth, async (req: Request, res: Response) => {
   const { roomId } = req.params;
   const userId = getUserId(req);
+
   if (!roomId || typeof roomId !== "string") {
     return res.status(400).json({ message: "Invalid room ID" });
   }
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
   const roomIdUpper = roomId.toUpperCase();
   const client = await pool.connect();
+
   try {
     await client.query("BEGIN");
-    const roomRes = await client.query<GameRoom>(
-      "SELECT * FROM game_rooms WHERE id = $1 AND created_by = $2",
-      [roomIdUpper, userId],
-    );
+
+    // Verify the user is the room creator (host)
+    const roomRes = await client.query<GameRoom>("SELECT * FROM game_rooms WHERE id = $1", [
+      roomIdUpper,
+    ]);
     const room = roomRes.rows[0];
-    if (!room || room.status !== "matched") {
+
+    if (!room) {
       await client.query("ROLLBACK");
-      return res.status(400).json({ message: "Need 2 players to start Gin Rummy." });
+      return res.status(404).json({ message: "Room not found" });
     }
+
+    if (room.created_by !== userId) {
+      await client.query("ROLLBACK");
+      return res.status(403).json({ message: "Only the host can start the game" });
+    }
+
+    if (room.status !== "waiting_to_start") {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ message: "Room is not ready to start" });
+    }
+
+    // Count players
+    const playerIds = [
+      room.created_by,
+      room.player_2_id,
+      room.player_3_id,
+      room.player_4_id,
+    ].filter((id): id is number => id !== null);
+
+    if (playerIds.length < 2) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ message: "Need at least 2 players to start" });
+    }
+
+    if (playerIds.length > 4) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ message: "Maximum 4 players allowed" });
+    }
+
+    // Initialize game state with first player's turn
     await client.query(
       "INSERT INTO game_state (room_id, turn_user_id) VALUES ($1, $2) ON CONFLICT (room_id) DO UPDATE SET turn_user_id = $2",
       [roomIdUpper, room.created_by],
     );
-    const deck = shuffle(createDeck());
-    const insertQueries = deck.map((card, index) => {
-      let location = "deck";
-      let ownerId: number | null = null;
-      if (index < 10) {
-        location = "hand";
-        ownerId = room.created_by;
-      } else if (index < 20) {
-        location = "hand";
-        ownerId = room.player_2_id;
-      } else if (index === 20) {
-        location = "discard";
-      }
-      return client.query(
-        `INSERT INTO game_cards (room_id, suit, rank, location, player_id, card_order)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [roomIdUpper, card.suit, card.rank, location, ownerId, index],
-      );
-    });
-    await Promise.all(insertQueries);
-    await client.query("UPDATE game_rooms SET status = 'completed' WHERE id = $1", [roomIdUpper]);
+
+    // Deal cards to all players
+    const cardsPerPlayer = await dealCards(client, roomIdUpper, playerIds, createDeck, shuffle);
+
+    // Update room status and started_at
+    await client.query(
+      "UPDATE game_rooms SET status = 'completed', started_at = NOW() WHERE id = $1",
+      [roomIdUpper],
+    );
+
     await client.query("COMMIT");
+
     broadcastToRoom(`game:room:${roomIdUpper}`, {
       event: "game:started",
-      data: { roomId: roomIdUpper },
+      data: {
+        roomId: roomIdUpper,
+        playerCount: playerIds.length,
+        cardsPerPlayer: cardsPerPlayer,
+      },
     });
-    return res.json({ message: "Gin Rummy started: 10 cards dealt to each player." });
+
+    return res.json({
+      message: `Gin Rummy started with ${String(playerIds.length)} players: ${String(cardsPerPlayer)} cards dealt to each player.`,
+    });
   } catch (error) {
     await client.query("ROLLBACK");
     console.error(error);
@@ -322,37 +1034,46 @@ router.post("/rooms/:roomId/start", requireAuth, async (req: Request, res: Respo
   }
 });
 
+// DRAW a card from the deck
 router.post("/rooms/:roomId/draw", requireAuth, async (req: Request, res: Response) => {
   const { roomId } = req.params;
   const userId = getUserId(req);
+
   if (!roomId || typeof roomId !== "string") {
     return res.status(400).json({ message: "Invalid room ID" });
   }
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
   const roomIdUpper = roomId.toUpperCase();
-  const stateRes = await pool.query<GameState>(
-    "SELECT turn_user_id FROM game_state WHERE room_id = $1",
-    [roomIdUpper],
-  );
-  if (stateRes.rows[0]?.turn_user_id !== userId) {
+  if (await roomHasResults(roomIdUpper)) {
+    return res.status(400).json({ message: "Round is already finished" });
+  }
+
+  const turnActor = await getTurnActor(roomIdUpper, userId);
+  if (!turnActor) {
     return res.status(403).json({ message: "Not your turn!" });
   }
+
   try {
     const topCard = await pool.query<GameCard>(
       "SELECT id FROM game_cards WHERE room_id = $1 AND location = 'deck' ORDER BY card_order ASC LIMIT 1",
       [roomIdUpper],
     );
-    const top = topCard.rows[0];
-    if (!top) {
+
+    const card = topCard.rows[0];
+    if (!card) {
       return res.status(400).json({ message: "Deck empty" });
     }
+
     await pool.query("UPDATE game_cards SET location = 'hand', player_id = $1 WHERE id = $2", [
-      userId,
-      top.id,
+      turnActor.actingUserId,
+      card.id,
     ]);
-    broadcastToRoom(`game:room:${roomIdUpper}`, {
-      event: "game:update",
-      data: { action: "draw" },
-    });
+
+    broadcastToRoom(`game:room:${roomIdUpper}`, { event: "game:update", data: { action: "draw" } });
     return res.json({ success: true });
   } catch (error) {
     console.error(error);
@@ -360,33 +1081,46 @@ router.post("/rooms/:roomId/draw", requireAuth, async (req: Request, res: Respon
   }
 });
 
+// DRAW the top card from the discard pile
 router.post("/rooms/:roomId/draw-discard", requireAuth, async (req: Request, res: Response) => {
   const { roomId } = req.params;
   const userId = getUserId(req);
+
   if (!roomId || typeof roomId !== "string") {
     return res.status(400).json({ message: "Invalid room ID" });
   }
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
   const roomIdUpper = roomId.toUpperCase();
-  const stateRes = await pool.query<GameState>(
-    "SELECT turn_user_id FROM game_state WHERE room_id = $1",
-    [roomIdUpper],
-  );
-  if (stateRes.rows[0]?.turn_user_id !== userId) {
+  if (await roomHasResults(roomIdUpper)) {
+    return res.status(400).json({ message: "Round is already finished" });
+  }
+
+  const turnActor = await getTurnActor(roomIdUpper, userId);
+  if (!turnActor) {
     return res.status(403).json({ message: "Not your turn!" });
   }
+
   try {
+    // Top of discard = highest card_order in the discard pile
     const topCard = await pool.query<GameCard>(
       "SELECT id FROM game_cards WHERE room_id = $1 AND location = 'discard' ORDER BY card_order DESC LIMIT 1",
       [roomIdUpper],
     );
-    const top = topCard.rows[0];
-    if (!top) {
+
+    const card = topCard.rows[0];
+    if (!card) {
       return res.status(400).json({ message: "Discard pile empty" });
     }
+
     await pool.query("UPDATE game_cards SET location = 'hand', player_id = $1 WHERE id = $2", [
-      userId,
-      top.id,
+      turnActor.actingUserId,
+      card.id,
     ]);
+
     broadcastToRoom(`game:room:${roomIdUpper}`, {
       event: "game:update",
       data: { action: "draw-discard" },
@@ -398,50 +1132,69 @@ router.post("/rooms/:roomId/draw-discard", requireAuth, async (req: Request, res
   }
 });
 
+// DISCARD (Play) a card from hand
 router.post("/rooms/:roomId/discard", requireAuth, async (req: Request, res: Response) => {
   const { roomId } = req.params;
   const { cardId } = req.body as { cardId: number };
   const userId = getUserId(req);
+
   if (!roomId || typeof roomId !== "string") {
     return res.status(400).json({ message: "Invalid room ID" });
   }
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
   const roomIdUpper = roomId.toUpperCase();
-  const stateRes = await pool.query<GameState>(
-    "SELECT turn_user_id FROM game_state WHERE room_id = $1",
-    [roomIdUpper],
-  );
-  if (stateRes.rows[0]?.turn_user_id !== userId) {
+  if (await roomHasResults(roomIdUpper)) {
+    return res.status(400).json({ message: "Round is already finished" });
+  }
+
+  const turnActor = await getTurnActor(roomIdUpper, userId);
+  if (!turnActor) {
     return res.status(403).json({ message: "Not your turn!" });
   }
+
   try {
+    // Place the discarded card on TOP of the discard pile by giving it
+    // the highest card_order in this room. That way "top of discard"
+    // queries (ORDER BY card_order DESC) always return the most recently
+    // discarded card — important for the Draw-Discard action.
     const result = await pool.query(
       `UPDATE game_cards
          SET location = 'discard',
              player_id = NULL,
              card_order = COALESCE((SELECT MAX(card_order) + 1 FROM game_cards WHERE room_id = $2), 0)
-       WHERE id = $1 AND room_id = $2 AND player_id = $3
+      WHERE id = $1 AND room_id = $2 AND player_id = $3
        RETURNING *`,
-      [cardId, roomIdUpper, userId],
+      [cardId, roomIdUpper, turnActor.actingUserId],
     );
+
     if (result.rowCount === 0) {
       return res.status(400).json({ message: "Invalid card" });
     }
-    const roomRes = await pool.query<GameRoom>("SELECT * FROM game_rooms WHERE id = $1", [
-      roomIdUpper,
-    ]);
-    const room = roomRes.rows[0];
-    if (!room) {
-      return res.status(404).json({ message: "Room not found" });
-    }
-    const nextTurn = userId === room.created_by ? room.player_2_id : room.created_by;
+
+    // Get room to find all active players
+    // Get all active players in order
+    const activePlayers = [
+      turnActor.room.created_by,
+      turnActor.room.player_2_id,
+      turnActor.room.player_3_id,
+      turnActor.room.player_4_id,
+    ].filter((id): id is number => id !== null);
+
+    // Find current player's index and get next player
+    const currentPlayerIndex = activePlayers.indexOf(turnActor.actingUserId);
+    const nextPlayerIndex = (currentPlayerIndex + 1) % activePlayers.length;
+    const nextTurn = activePlayers[nextPlayerIndex];
+
     await pool.query("UPDATE game_state SET turn_user_id = $1 WHERE room_id = $2", [
       nextTurn,
       roomIdUpper,
     ]);
-    broadcastToRoom(`game:room:${roomIdUpper}`, {
-      event: "game:update",
-      data: { action: "play" },
-    });
+
+    broadcastToRoom(`game:room:${roomIdUpper}`, { event: "game:update", data: { action: "play" } });
     return res.json({ success: true });
   } catch (error) {
     console.error(error);
@@ -449,31 +1202,358 @@ router.post("/rooms/:roomId/discard", requireAuth, async (req: Request, res: Res
   }
 });
 
-router.get("/rooms/:roomId/state", requireAuth, async (req: Request, res: Response) => {
+router.post("/rooms/:roomId/knock", requireAuth, async (req: Request, res: Response) => {
   const { roomId } = req.params;
   const userId = getUserId(req);
+  const { discardCardId } = req.body as FinishRoundBody;
+
   if (!roomId || typeof roomId !== "string") {
     return res.status(400).json({ message: "Invalid room ID" });
   }
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  const turnActor = await getTurnActor(roomId.toUpperCase(), userId);
+  if (!turnActor) {
+    return res.status(403).json({ message: "Not your turn!" });
+  }
+
+  const result = await finishRound(roomId, turnActor.actingUserId, "knock", discardCardId);
+  if (!result.results) {
+    return res.status(400).json({ message: result.errorMessage ?? "Could not knock" });
+  }
+
+  return res.status(200).json({
+    message: "Knock accepted",
+    results: result.finishResults,
+  });
+});
+
+router.post("/rooms/:roomId/gin", requireAuth, async (req: Request, res: Response) => {
+  const { roomId } = req.params;
+  const userId = getUserId(req);
+  const { discardCardId } = req.body as FinishRoundBody;
+
+  if (!roomId || typeof roomId !== "string") {
+    return res.status(400).json({ message: "Invalid room ID" });
+  }
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  const turnActor = await getTurnActor(roomId.toUpperCase(), userId);
+  if (!turnActor) {
+    return res.status(403).json({ message: "Not your turn!" });
+  }
+
+  const result = await finishRound(roomId, turnActor.actingUserId, "gin", discardCardId);
+  if (!result.results) {
+    return res.status(400).json({ message: result.errorMessage ?? "Could not go gin" });
+  }
+
+  return res.status(200).json({
+    message: "Gin accepted",
+    results: result.finishResults,
+  });
+});
+
+router.post("/rooms/:roomId/declare", requireAuth, async (req: Request, res: Response) => {
+  const { roomId } = req.params;
+  const userId = getUserId(req);
+  const { discardCardId } = req.body as FinishRoundBody;
+
+  if (!roomId || typeof roomId !== "string") {
+    return res.status(400).json({ message: "Invalid room ID" });
+  }
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  if (discardCardId === undefined) {
+    return res.status(400).json({ message: "Choose a card to discard before declaring" });
+  }
+
   const roomIdUpper = roomId.toUpperCase();
+  const turnActor = await getTurnActor(roomIdUpper, userId);
+  if (!turnActor) {
+    return res.status(403).json({ message: "Not your turn!" });
+  }
+
+  const cards = await pool.query<GameCard>(
+    "SELECT id, suit, rank, location, player_id, card_order FROM game_cards WHERE room_id = $1 AND player_id = $2 AND location = 'hand'",
+    [roomIdUpper, turnActor.actingUserId],
+  );
+  const declarationHand = removeDiscardForDeclaration(cards.rows, discardCardId);
+  const deadwood = evaluateHand(declarationHand).deadwood;
+  const declaration: FinishDeclaration = deadwood === 0 ? "gin" : "knock";
+
+  const result = await finishRound(roomId, turnActor.actingUserId, declaration, discardCardId);
+  if (!result.results) {
+    return res.status(400).json({ message: result.errorMessage ?? "Could not declare" });
+  }
+
+  return res.status(200).json({
+    message: declaration === "gin" ? "Gin accepted" : "Knock accepted",
+    declaration,
+    results: result.finishResults,
+  });
+});
+
+router.post("/rooms/:roomId/results", requireAuth, async (req: Request, res: Response) => {
+  const { roomId } = req.params;
+  const userId = getUserId(req);
+
+  if (!roomId || typeof roomId !== "string") {
+    return res.status(400).json({ message: "Invalid room ID" });
+  }
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  const { results } = req.body as SubmitResultsBody;
+  const roomIdUpper = roomId.toUpperCase();
+  const client = await pool.connect();
+
   try {
-    const cards = await pool.query<GameCard>(
-      "SELECT id, suit, rank, location, player_id, card_order FROM game_cards WHERE room_id = $1",
-      [roomIdUpper],
+    await client.query("BEGIN");
+
+    const roomResult = await client.query<GameRoom>("SELECT * FROM game_rooms WHERE id = $1", [
+      roomIdUpper,
+    ]);
+    const room = roomResult.rows[0];
+
+    if (!room) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ message: "Room not found" });
+    }
+
+    if (room.created_by !== userId) {
+      await client.query("ROLLBACK");
+      return res.status(403).json({ message: "Only the host can record game results" });
+    }
+
+    const playerIds = playerIdsForRoom(room);
+    const validation = validateSubmittedResults(results, playerIds);
+    if (!validation.validResults) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ message: validation.errorMessage });
+    }
+
+    const savedResults = await saveGameResults(client, roomIdUpper, validation.validResults);
+    await client.query("COMMIT");
+
+    broadcastToRoom(`game:room:${roomIdUpper}`, {
+      event: "game:results_recorded",
+      data: {
+        roomId: roomIdUpper,
+        results: savedResults,
+      },
+    });
+
+    return res.status(200).json({ results: savedResults });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error recording game results:", error);
+    return res.status(500).json({ message: "Failed to record game results" });
+  } finally {
+    client.release();
+  }
+});
+
+router.get("/rooms/:roomId/state", requireAuth, async (req: Request, res: Response) => {
+  const { roomId } = req.params;
+  const userId = getUserId(req);
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  if (!roomId || typeof roomId !== "string") {
+    return res.status(400).json({ message: "Invalid room ID" });
+  }
+
+  const roomIdUpper = roomId.toUpperCase();
+
+  try {
+    const [{ room, selfPlay }, cards, state, results] = await Promise.all([
+      getRoomWithSelfPlay(roomIdUpper),
+      pool.query<GameCard>(
+        "SELECT id, suit, rank, location, player_id, card_order FROM game_cards WHERE room_id = $1",
+        [roomIdUpper],
+      ),
+      pool.query<GameState>("SELECT turn_user_id FROM game_state WHERE room_id = $1", [
+        roomIdUpper,
+      ]),
+      pool.query<GameResultRow>(
+        "SELECT * FROM game_results WHERE room_id = $1 ORDER BY placement ASC, deadwood_score ASC, user_id ASC",
+        [roomIdUpper],
+      ),
+    ]);
+    const turnUserId = state.rows[0]?.turn_user_id;
+
+    // Get all active players
+    const activePlayers = room
+      ? [room.created_by, room.player_2_id, room.player_3_id, room.player_4_id].filter(
+          (id): id is number => id !== null,
+        )
+      : [];
+
+    if (!room) {
+      return res.status(404).json({ message: "Room not found" });
+    }
+
+    if (!activePlayers.includes(userId)) {
+      return res.status(403).json({ message: "You are not in this room" });
+    }
+
+    const finished = results.rows.length > 0;
+    const viewerPlayerId = visiblePlayerIdForState(room, selfPlay, userId, turnUserId);
+    const currentUserHand = cards.rows.filter(
+      (card) => card.location === "hand" && card.player_id === viewerPlayerId,
     );
-    const state = await pool.query<GameState>(
-      "SELECT turn_user_id FROM game_state WHERE room_id = $1",
-      [roomIdUpper],
-    );
+    const currentEvaluation = evaluateHand(currentUserHand);
+    const publicCards = serializeCardsForViewer(cards.rows, viewerPlayerId, finished);
+
     return res.json({
-      cards: cards.rows,
-      turn: state.rows[0]?.turn_user_id,
-      isMyTurn: state.rows[0]?.turn_user_id === userId,
+      cards: publicCards,
+      turn: turnUserId,
+      isMyTurn:
+        !finished && (turnUserId === userId || (selfPlay && turnUserId === room.player_2_id)),
+      activePlayerId: turnUserId,
+      viewerPlayerId,
+      activePlayers: activePlayers,
+      playerCount: activePlayers.length,
+      selfPlay: selfPlay,
+      currentDeadwood: currentEvaluation.deadwood,
+      currentMelds: currentEvaluation.melds,
+      currentDeadwoodCards: currentEvaluation.deadwoodCards,
+      finished,
+      results: results.rows,
     });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Failed to fetch state" });
   }
 });
+
+// POST chat message to a room
+router.post("/rooms/:roomId/chat", requireAuth, async (req: Request, res: Response) => {
+  const { roomId } = req.params;
+  const userId = getUserId(req);
+  const { message } = req.body as { message: string };
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  if (!roomId || typeof roomId !== "string") {
+    return res.status(400).json({ message: "Invalid room ID" });
+  }
+
+  if (!message || typeof message !== "string" || message.trim().length === 0) {
+    return res.status(400).json({ message: "Message cannot be empty" });
+  }
+
+  if (message.length > 500) {
+    return res.status(400).json({ message: "Message is too long (max 500 characters)" });
+  }
+
+  const roomIdUpper = roomId.toUpperCase();
+
+  try {
+    // Get user nickname
+    const userRes = await pool.query<{ nickname: string; id: number }>(
+      "SELECT id, nickname FROM users WHERE id = $1",
+      [userId],
+    );
+    const user = userRes.rows[0];
+    if (!user) {
+      return res.status(401).json({ message: "User not found" });
+    }
+
+    // Insert chat message
+    const chatRes = await pool.query<ChatInsertRow>(
+      "INSERT INTO game_chat (room_id, user_id, message) VALUES ($1, $2, $3) RETURNING id, created_at",
+      [roomIdUpper, userId, message.trim()],
+    );
+
+    const chatMessage = chatRes.rows[0];
+    if (!chatMessage) {
+      return res.status(500).json({ message: "Failed to send message" });
+    }
+
+    // Broadcast to room
+    broadcastToRoom(`game:room:${roomIdUpper}`, {
+      event: "game:chat",
+      data: {
+        id: chatMessage.id,
+        userId: userId,
+        nickname: user.nickname || "Anonymous",
+        message: message.trim(),
+        timestamp: chatMessage.created_at,
+      },
+    });
+
+    return res.status(201).json({
+      id: chatMessage.id,
+      message: message.trim(),
+      timestamp: chatMessage.created_at,
+    });
+  } catch (error) {
+    console.error("Error sending chat message:", error);
+    return res.status(500).json({ message: "Failed to send message" });
+  }
+});
+
+// GET chat history for a room
+router.get("/rooms/:roomId/chat", requireAuth, async (req: Request, res: Response) => {
+  const { roomId } = req.params;
+  const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+
+  if (!roomId || typeof roomId !== "string") {
+    return res.status(400).json({ message: "Invalid room ID" });
+  }
+
+  const roomIdUpper = roomId.toUpperCase();
+
+  try {
+    const messages = await pool.query(
+      `SELECT c.id, c.user_id, u.nickname, c.message, c.created_at 
+       FROM game_chat c
+       JOIN users u ON c.user_id = u.id
+       WHERE c.room_id = $1
+       ORDER BY c.created_at DESC
+       LIMIT $2`,
+      [roomIdUpper, limit],
+    );
+
+    return res.status(200).json({
+      messages: messages.rows.reverse(),
+    });
+  } catch (error) {
+    console.error("Error fetching chat history:", error);
+    return res.status(500).json({ message: "Failed to fetch chat history" });
+  }
+});
+
+// Kept for potential future use
+// function getCanSelfPlayAct(
+//   room: GameRoomWithPlayer2Email | null,
+//   selfPlay: boolean,
+//   userId: number,
+//   turnUserId: number | undefined,
+// ): boolean {
+//   return (
+//     selfPlay &&
+//     room?.created_by === userId &&
+//     Boolean(room.player_2_id) &&
+//     (turnUserId === room.created_by || turnUserId === room.player_2_id)
+//   );
+// }
 
 export default router;

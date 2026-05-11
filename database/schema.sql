@@ -21,12 +21,32 @@ CREATE TABLE IF NOT EXISTS game_rooms (
     id VARCHAR(8) PRIMARY KEY,
     created_by INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     player_2_id INT REFERENCES users(id) ON DELETE CASCADE,
+    player_3_id INT REFERENCES users(id) ON DELETE CASCADE,
+    player_4_id INT REFERENCES users(id) ON DELETE CASCADE,
     status VARCHAR(50) DEFAULT 'waiting',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     matched_at TIMESTAMP,
-    -- 'completed' is often used as the 'active' state in the routes
-    CONSTRAINT valid_status CHECK (status IN ('waiting', 'matched', 'completed', 'cancelled'))
+    started_at TIMESTAMP,
+    -- 'waiting': room created, waiting for players
+    -- 'waiting_to_start': room has 2+ players, waiting for host to click start
+    -- 'completed': game is in progress
+    -- 'cancelled': room was cancelled
+    CONSTRAINT valid_status CHECK (status IN ('waiting', 'waiting_to_start', 'completed', 'cancelled'))
 );
+
+-- Add missing columns if they don't exist (for existing databases)
+DO $$ 
+BEGIN 
+  IF NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='game_rooms' AND column_name='player_3_id') THEN
+    ALTER TABLE game_rooms ADD COLUMN player_3_id INT REFERENCES users(id) ON DELETE CASCADE;
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='game_rooms' AND column_name='player_4_id') THEN
+    ALTER TABLE game_rooms ADD COLUMN player_4_id INT REFERENCES users(id) ON DELETE CASCADE;
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='game_rooms' AND column_name='started_at') THEN
+    ALTER TABLE game_rooms ADD COLUMN started_at TIMESTAMP;
+  END IF;
+END $$;
 
 -- GAME STATE: Tracks whose turn it is
 CREATE TABLE IF NOT EXISTS game_state (
@@ -48,6 +68,23 @@ CREATE TABLE IF NOT EXISTS game_cards (
     CONSTRAINT valid_location CHECK (location IN ('deck', 'discard', 'hand'))
 );
 
+-- GAME RESULTS: One row per player per finished game, used by profile stats
+CREATE TABLE IF NOT EXISTS game_results (
+    id SERIAL PRIMARY KEY,
+    room_id VARCHAR(8) NOT NULL REFERENCES game_rooms(id) ON DELETE CASCADE,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    opponent_ids INT[] DEFAULT '{}',
+    placement INT,
+    score INT DEFAULT 0,
+    deadwood_score INT DEFAULT 0,
+    went_gin BOOLEAN DEFAULT FALSE,
+    knocked BOOLEAN DEFAULT FALSE,
+    outcome VARCHAR(20) NOT NULL,
+    finished_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT game_results_room_user_unique UNIQUE (room_id, user_id),
+    CONSTRAINT game_results_valid_outcome CHECK (outcome IN ('win', 'loss', 'draw'))
+);
+
 -- CARDS LOOKUP TABLE: the static, immutable definition of all 52
 -- standard playing cards. Seeded once by database/migration.js and never
 -- written to at runtime. game_cards is the junction table that maps a
@@ -62,6 +99,19 @@ CREATE TABLE IF NOT EXISTS cards (
     CONSTRAINT cards_valid_color CHECK (color IN ('RED', 'BLACK'))
 );
 
+-- GAME CHAT: Store chat messages sent during a game
+CREATE TABLE IF NOT EXISTS game_chat (
+    id SERIAL PRIMARY KEY,
+    room_id VARCHAR(8) NOT NULL REFERENCES game_rooms(id) ON DELETE CASCADE,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    message TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexing for production performance on Render
 CREATE INDEX IF NOT EXISTS idx_game_cards_room ON game_cards(room_id);
 CREATE INDEX IF NOT EXISTS idx_game_cards_location ON game_cards(location);
+CREATE INDEX IF NOT EXISTS idx_game_results_user ON game_results(user_id);
+CREATE INDEX IF NOT EXISTS idx_game_results_room ON game_results(room_id);
+CREATE INDEX IF NOT EXISTS idx_game_chat_room ON game_chat(room_id);
+CREATE INDEX IF NOT EXISTS idx_game_chat_created ON game_chat(created_at);

@@ -55,20 +55,28 @@
           <button id="btn-view-scores">View Scores (S)</button>
           <button id="btn-continue">Continue (C)</button>
         </div>
-        <hr />
-        <section class="auth-demo-panel">
-          <h3>Auth Demo</h3>
-          <p id="auth-session-state" class="auth-demo-text">Checking session...</p>
-          <button id="check-protected-route" class="auth-demo-button" type="button">
-            Visit Protected Route
-          </button>
-          <pre id="protected-route-result" class="protected-route-result">
-Click the button to test /protected
-          </pre>
-        </section>
       </div>
 
       <canvas id="canvas" width="600" height="600"></canvas>
+
+      <!-- Chat Panel -->
+      <div id="chat-panel" class="chat-panel" hidden>
+        <div class="chat-header">
+          <h3>Chat</h3>
+          <button id="chat-toggle" class="chat-toggle" type="button" title="Toggle chat">−</button>
+        </div>
+        <div id="chat-messages" class="chat-messages"></div>
+        <div class="chat-input-wrapper">
+          <input
+            id="chat-input"
+            type="text"
+            class="chat-input"
+            placeholder="Type a message..."
+            maxlength="500"
+          />
+          <button id="chat-send" class="chat-send" type="button">Send</button>
+        </div>
+      </div>
     </div>
 
     <div id="auth-modal" class="auth-modal" hidden>
@@ -158,5 +166,6 @@ Click the button to test /protected
 
     <script type="module" src="/js/auth-ui.js"></script>
     <script type="module" src="/js/game-room.js"></script>
+    <script type="module" src="/js/chat.js"></script>
   </body>
 </html>
