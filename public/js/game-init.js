@@ -98,6 +98,9 @@
     // Subscribe FIRST so we don't miss the broadcast that follows /start
     subscribeToRoom(session.roomId);
 
+    // Initialize chat for this session
+    window.dispatchEvent(new CustomEvent("game:start", { detail: session }));
+
     if (asHost && !started) {
       try {
         await fetch(`/api/game/rooms/${session.roomId}/start`, {

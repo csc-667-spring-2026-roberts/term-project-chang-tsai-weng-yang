@@ -24,6 +24,55 @@
   let controlsBound = false;
   const renderedMessageIds = new Set();
 
+  // Helper functions for localStorage persistence
+  function saveChatState() {
+    localStorage.setItem("chatState", JSON.stringify({
+      isMinimized,
+      isClosed
+    }));
+  }
+
+  function restoreChatState() {
+    try {
+      const stored = localStorage.getItem("chatState");
+      if (stored) {
+        const state = JSON.parse(stored);
+        isMinimized = state.isMinimized || false;
+        isClosed = state.isClosed || false;
+        return true;
+      }
+    } catch (e) {
+      console.error("Error restoring chat state:", e);
+    }
+    return false;
+  }
+
+  function applyChatState() {
+    if (!chatPanel) return;
+
+    if (isClosed) {
+      chatPanel.hidden = true;
+      if (chatLauncher) chatLauncher.hidden = false;
+    } else {
+      chatPanel.hidden = false;
+      if (chatLauncher) chatLauncher.hidden = true;
+      
+      if (isMinimized) {
+        chatPanel.classList.add("minimized");
+        if (chatToggle) {
+          chatToggle.textContent = "+";
+          chatToggle.setAttribute("aria-expanded", "false");
+        }
+      } else {
+        chatPanel.classList.remove("minimized");
+        if (chatToggle) {
+          chatToggle.textContent = "−";
+          chatToggle.setAttribute("aria-expanded", "true");
+        }
+      }
+    }
+  }
+
   setIdleState();
   bindChatControls();
 
@@ -98,6 +147,11 @@
 
     // Bind event listeners
     bindChatControls();
+
+    // Restore previous chat state (minimized/closed) if it exists
+    if (restoreChatState()) {
+      applyChatState();
+    }
   }
 
   function bindChatControls() {
@@ -247,6 +301,7 @@
       chatPanel.classList.add("minimized");
       isMinimized = true;
     }
+    saveChatState();
   }
 
   function closeChat() {
@@ -257,6 +312,7 @@
     isClosed = true;
     isMinimized = false;
     updateUnreadBadge();
+    saveChatState();
   }
 
   function openChat() {
@@ -277,6 +333,7 @@
     if (roomId) {
       chatInput?.focus();
     }
+    saveChatState();
   }
 
   function isOwnMessage(message) {
@@ -369,6 +426,8 @@
     setChatError("");
     updateUnreadBadge();
     updateCharacterCount();
+    // Clear persisted state when game ends
+    localStorage.removeItem("chatState");
   }
 
   // Export function for game-init.js to call
