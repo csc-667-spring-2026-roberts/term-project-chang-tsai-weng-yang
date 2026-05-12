@@ -108,6 +108,27 @@ CREATE TABLE IF NOT EXISTS game_chat (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+
+-- AUTO-HEAL FOR PRE-EXISTING DATABASES ----------------------------------------
+-- CREATE TABLE IF NOT EXISTS is a no-op when the table exists, so any
+-- check-constraint changes have to be applied via ALTER. This block drops
+-- the old `valid_status` constraint (which only allowed waiting/matched/
+-- completed/cancelled) and re-adds it with the new value set including
+-- 'waiting_to_start'. Idempotent: safe to run on fresh and existing DBs.
+DO $$
+BEGIN
+  ALTER TABLE game_rooms DROP CONSTRAINT IF EXISTS valid_status;
+  ALTER TABLE game_rooms ADD CONSTRAINT valid_status
+    CHECK (status IN ('waiting', 'waiting_to_start', 'matched', 'completed', 'cancelled'));
+EXCEPTION WHEN OTHERS THEN
+  -- If the table doesn't exist yet (very fresh DB before CREATE), ignore.
+  NULL;
+END $$;
+
+-- Normalize any legacy rows that were stuck at 'matched' under the
+-- old code path so they don't block the new state machine.
+UPDATE game_rooms SET status = 'waiting_to_start' WHERE status = 'matched';
+
 -- Indexing for production performance on Render
 CREATE INDEX IF NOT EXISTS idx_game_cards_room ON game_cards(room_id);
 CREATE INDEX IF NOT EXISTS idx_game_cards_location ON game_cards(location);
