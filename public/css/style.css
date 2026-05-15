@@ -366,8 +366,8 @@ nav a:hover {
 
 .table-game {
   flex: 1;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: clamp(6px, 1.2vh, 12px);
   height: 100%;
   min-height: 0;
@@ -434,7 +434,21 @@ nav a:hover {
   }
 }
 
-.table-opponent,
+.table-play-area {
+  display: grid;
+  grid-template-columns: minmax(96px, 1fr) minmax(180px, 1.35fr) minmax(96px, 1fr);
+  grid-template-rows: minmax(76px, auto) minmax(120px, 1fr) minmax(108px, auto);
+  grid-template-areas:
+    "left top right"
+    "left center right"
+    "self self self";
+  align-items: center;
+  justify-items: center;
+  gap: clamp(8px, 1.8vh, 16px) clamp(10px, 2vw, 22px);
+  min-height: 0;
+}
+
+.seat-area,
 .table-self {
   display: flex;
   flex-direction: column;
@@ -444,7 +458,9 @@ nav a:hover {
 }
 
 .table-self {
-  margin-top: auto;
+  grid-area: self;
+  align-self: end;
+  width: 100%;
 }
 
 .player-label {
@@ -455,12 +471,12 @@ nav a:hover {
 }
 
 .table-center {
+  grid-area: center;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: clamp(18px, 4vw, 32px);
   padding: clamp(4px, 1.2vh, 10px) 0;
-  flex: 0 0 auto;
 }
 
 /* ─── Piles ─────────────────────────────────────────────────────────────────── */
@@ -604,10 +620,9 @@ nav a:hover {
 }
 
 .opponent-hand {
+  display: contents;
   width: 100%;
   min-height: 0;
-  max-height: clamp(72px, 12vh, 112px);
-  gap: clamp(8px, 1.6vw, 18px);
 }
 
 .opponent-seat {
@@ -615,6 +630,23 @@ nav a:hover {
   justify-items: center;
   gap: 4px;
   min-width: 0;
+  max-width: 100%;
+}
+
+.opponent-seat.seat-top {
+  grid-area: top;
+}
+
+.opponent-seat.seat-left {
+  grid-area: left;
+  justify-self: end;
+  transform: rotate(-90deg);
+}
+
+.opponent-seat.seat-right {
+  grid-area: right;
+  justify-self: start;
+  transform: rotate(90deg);
 }
 
 .opponent-seat-label {
@@ -628,6 +660,12 @@ nav a:hover {
 .opponent-seat-hand {
   flex-wrap: nowrap;
   gap: 4px;
+  max-height: none;
+}
+
+.seat-left .opponent-seat-hand,
+.seat-right .opponent-seat-hand {
+  flex-direction: row;
   max-height: none;
 }
 
@@ -737,6 +775,25 @@ nav a:hover {
   .game-table {
     padding: 12px;
     min-height: 420px;
+  }
+  .table-play-area {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto minmax(108px, auto) auto;
+    grid-template-areas:
+      "top top"
+      "left right"
+      "center center"
+      "self self";
+  }
+  .opponent-seat.seat-left,
+  .opponent-seat.seat-right {
+    justify-self: center;
+    transform: none;
+  }
+  .seat-left .opponent-seat-hand,
+  .seat-right .opponent-seat-hand {
+    flex-direction: row;
+    max-height: none;
   }
   .pile-card {
     width: 60px;
