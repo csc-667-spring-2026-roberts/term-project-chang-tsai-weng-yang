@@ -3,6 +3,22 @@
 // Pattern: fetch state on every relevant change, SSE only signals "refetch".
 (() => {
   const SUIT_GLYPH = { H: "♥", D: "♦", C: "♣", S: "♠" };
+  const RANK_ORDER = {
+    A: 1,
+    2: 2,
+    3: 3,
+    4: 4,
+    5: 5,
+    6: 6,
+    7: 7,
+    8: 8,
+    9: 9,
+    10: 10,
+    J: 11,
+    Q: 12,
+    K: 13,
+  };
+  const SUIT_ORDER = { S: 0, H: 1, C: 2, D: 3 };
 
   // Local state
   let session = null; // { roomId, playerId, opponentId, isPlayer1, ... }
@@ -14,6 +30,7 @@
   let eventSource = null;
   let selectedCardId = null;
   let lastState = null; // last response from /state
+  let handSortMode = "suit";
 
   // DOM lookups
   const $ = (sel) => document.querySelector(sel);
@@ -206,25 +223,7 @@
     const deck = state.cards.filter((c) => c.location === "deck");
     const discardP = state.cards.filter((c) => c.location === "discard");
 
-    const RANK_ORDER = {
-      A: 1,
-      2: 2,
-      3: 3,
-      4: 4,
-      5: 5,
-      6: 6,
-      7: 7,
-      8: 8,
-      9: 9,
-      10: 10,
-      J: 11,
-      Q: 12,
-      K: 13,
-    };
-    const SUIT_ORDER = { S: 0, H: 1, C: 2, D: 3 };
-    myHand.sort(
-      (a, b) => SUIT_ORDER[a.suit] - SUIT_ORDER[b.suit] || RANK_ORDER[a.rank] - RANK_ORDER[b.rank],
-    );
+    myHand.sort(compareCardsForCurrentMode);
 
     if (selectedCardId && !myHand.some((c) => c.id === selectedCardId)) {
       selectedCardId = null;
@@ -308,8 +307,9 @@
     const handSize = myHand.length;
     const mustDraw = myTurn && handSize === cardsPerPlayer;
     const mustDiscard = myTurn && handSize >= cardsPerPlayer + 1;
+    const canDrawFromStock = deck.length > 0 || discardP.length > 1;
 
-    pileDeck.classList.toggle("disabled", !(mustDraw && deck.length > 0));
+    pileDeck.classList.toggle("disabled", !(mustDraw && canDrawFromStock));
     pileDiscard.classList.toggle("disabled", !(mustDraw && !!showTop));
     btnDiscard.disabled = !(mustDiscard && selectedCardId !== null);
     btnKnock.disabled = !(mustDiscard && selectedCardId !== null);
@@ -327,6 +327,32 @@
     if (!Number.isFinite(handSize) || handSize < 0) return cardsPerPlayer;
     const maxExpectedDuringTurn = cardsPerPlayer + 1;
     return Math.min(handSize, maxExpectedDuringTurn);
+  }
+
+  function compareCardsForCurrentMode(a, b) {
+    const suitDiff = (SUIT_ORDER[a.suit] ?? 99) - (SUIT_ORDER[b.suit] ?? 99);
+    const rankDiff = (RANK_ORDER[a.rank] ?? 99) - (RANK_ORDER[b.rank] ?? 99);
+
+    if (handSortMode === "rank") {
+      return rankDiff || suitDiff || a.id - b.id;
+    }
+
+    return suitDiff || rankDiff || a.id - b.id;
+  }
+
+  function toggleHandSortMode() {
+    handSortMode = handSortMode === "suit" ? "rank" : "suit";
+    updateSortButtonLabel();
+  }
+
+  function updateSortButtonLabel() {
+    if (!btnSort) return;
+    const nextMode = handSortMode === "suit" ? "rank" : "suit";
+    btnSort.textContent = nextMode === "rank" ? "Sort by Rank" : "Sort by Suit";
+    btnSort.title =
+      nextMode === "rank"
+        ? "Sort hand by number, then suit"
+        : "Sort hand by suit, then number";
   }
 
   function buildCard(card, faceUp) {
@@ -436,7 +462,9 @@
       }
     });
 
+    updateSortButtonLabel();
     btnSort?.addEventListener("click", () => {
+      toggleHandSortMode();
       if (lastState) render(lastState);
     });
 
