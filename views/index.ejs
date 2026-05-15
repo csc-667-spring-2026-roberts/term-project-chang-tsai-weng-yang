@@ -70,25 +70,24 @@
             <button id="btn-leave-game" type="button" class="hud-leave-btn">Leave</button>
           </header>
 
-          <section class="table-opponent">
-            <div class="player-label" id="hud-opponent-name">Opponent</div>
-            <div class="hand opponent-hand" id="opponent-hand"></div>
-          </section>
+          <section class="table-play-area" aria-label="Game table">
+            <div class="seat-area opponent-hand" id="opponent-hand"></div>
 
-          <section class="table-center">
-            <div class="pile pile-deck" id="pile-deck" title="Draw Stock">
-              <div class="pile-card pile-card-back"></div>
-              <div class="pile-label">Stock <span id="deck-count">0</span></div>
-            </div>
-            <div class="pile pile-discard" id="pile-discard" title="Draw Discard">
-              <div class="pile-card" id="discard-top"></div>
-              <div class="pile-label">Discard</div>
-            </div>
-          </section>
+            <section class="table-center">
+              <div class="pile pile-deck" id="pile-deck" title="Draw Stock">
+                <div class="pile-card pile-card-back"></div>
+                <div class="pile-label">Stock <span id="deck-count">0</span></div>
+              </div>
+              <div class="pile pile-discard" id="pile-discard" title="Draw Discard">
+                <div class="pile-card" id="discard-top"></div>
+                <div class="pile-label">Discard</div>
+              </div>
+            </section>
 
-          <section class="table-self">
-            <div class="hand self-hand" id="self-hand"></div>
-            <div class="player-label" id="hud-self-name">You</div>
+            <section class="seat-area table-self">
+              <div class="hand self-hand" id="self-hand"></div>
+              <div class="player-label" id="hud-self-name">You</div>
+            </section>
           </section>
 
           <section class="table-actions" aria-label="Game actions">

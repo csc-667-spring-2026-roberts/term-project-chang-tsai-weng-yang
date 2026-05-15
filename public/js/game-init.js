@@ -249,7 +249,7 @@
       const oppHand = state.cards.filter((c) => c.location === "hand" && c.player_id === playerId);
       const visibleBacks = normalizeOpponentBackCount(oppHand.length, cardsPerPlayer);
       const seat = document.createElement("div");
-      seat.className = "opponent-seat";
+      seat.className = `opponent-seat ${seatClassForOpponent(index, otherPlayers.length)}`;
 
       const seatLabel = document.createElement("div");
       seatLabel.className = "opponent-seat-label";
@@ -329,6 +329,18 @@
     if (!Number.isFinite(handSize) || handSize < 0) return cardsPerPlayer;
     const maxExpectedDuringTurn = cardsPerPlayer + 1;
     return Math.min(handSize, maxExpectedDuringTurn);
+  }
+
+  function seatClassForOpponent(index, opponentCount) {
+    if (opponentCount >= 3) {
+      return ["seat-left", "seat-top", "seat-right"][index] || "seat-top";
+    }
+
+    if (opponentCount === 2) {
+      return ["seat-left", "seat-top"][index] || "seat-top";
+    }
+
+    return "seat-top";
   }
 
   function compareCardsForCurrentMode(a, b) {
