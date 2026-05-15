@@ -48,6 +48,7 @@
   const hudSelf = $("#hud-self-name");
   const tableMessage = $("#table-message");
   const leaveButton = $("#btn-leave-game");
+  const btnNewGame = $("#btn-new-game");
   const roundResults = $("#round-results");
   const roundResultsList = $("#round-results-list");
 
@@ -106,6 +107,7 @@
     if (tableEmpty) tableEmpty.hidden = true;
     if (tableGame) tableGame.hidden = false;
     if (leaveButton) leaveButton.hidden = false;
+    setNewGameEnabled(false);
 
     if (hudRoom) hudRoom.textContent = session.roomId;
 
@@ -561,6 +563,7 @@
     if (tableGame) tableGame.hidden = true;
     if (leaveButton) leaveButton.hidden = true;
     if (roundResults) roundResults.hidden = true;
+    setNewGameEnabled(true);
 
     // Hide chat panel when game ends
     if (window.chatHide) {
@@ -586,6 +589,12 @@
       }
     }
     endGame(true);
+  }
+
+  function setNewGameEnabled(enabled) {
+    if (!btnNewGame) return;
+    btnNewGame.disabled = !enabled;
+    btnNewGame.title = enabled ? "" : "Finish or leave the current game before starting a new one.";
   }
 
   window.addEventListener("game:end", () => endGame(false));

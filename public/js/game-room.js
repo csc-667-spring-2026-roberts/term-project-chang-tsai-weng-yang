@@ -99,6 +99,7 @@
   }
 
   function openModal() {
+    if (btnNewGame?.disabled) return;
     if (!gameRoomModal) return;
     gameRoomModal.hidden = false;
     resetForm();
@@ -535,6 +536,7 @@
   function startGameOnMatch(roomData) {
     if (gameStarted) return;
     gameStarted = true;
+    if (btnNewGame) btnNewGame.disabled = true;
 
     const gameSession = {
       roomId: currentRoomId || roomData.roomId,
