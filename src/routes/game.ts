@@ -214,6 +214,46 @@ function serializeCardsForViewer(
   });
 }
 
+function shuffleRows<T>(rows: T[]): T[] {
+  for (let i = rows.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const temp = rows[i];
+    rows[i] = rows[j] as T;
+    rows[j] = temp as T;
+  }
+  return rows;
+}
+
+async function recycleDiscardIntoDeck(client: PoolClient, roomId: string): Promise<number> {
+  const discardCards = await client.query<GameCard>(
+    `SELECT id, suit, rank, location, player_id, card_order
+       FROM game_cards
+      WHERE room_id = $1 AND location = 'discard'
+      ORDER BY card_order DESC
+      FOR UPDATE`,
+    [roomId],
+  );
+
+  const cardsBelowTop = discardCards.rows.slice(1);
+  if (cardsBelowTop.length === 0) {
+    return 0;
+  }
+
+  const shuffledCards = shuffleRows(cardsBelowTop);
+  for (const [index, card] of shuffledCards.entries()) {
+    await client.query(
+      `UPDATE game_cards
+          SET location = 'deck',
+              player_id = NULL,
+              card_order = $1
+        WHERE id = $2 AND room_id = $3`,
+      [index, card.id, roomId],
+    );
+  }
+
+  return shuffledCards.length;
+}
+
 function isGameOutcome(value: unknown): value is GameOutcome {
   return value === "win" || value === "loss" || value === "draw";
 }
@@ -1057,27 +1097,46 @@ router.post("/rooms/:roomId/draw", requireAuth, async (req: Request, res: Respon
     return res.status(403).json({ message: "Not your turn!" });
   }
 
+  const client = await pool.connect();
+
   try {
-    const topCard = await pool.query<GameCard>(
+    await client.query("BEGIN");
+    await client.query("SELECT id FROM game_cards WHERE room_id = $1 FOR UPDATE", [roomIdUpper]);
+
+    let topCard = await client.query<GameCard>(
       "SELECT id FROM game_cards WHERE room_id = $1 AND location = 'deck' ORDER BY card_order ASC LIMIT 1",
       [roomIdUpper],
     );
 
-    const card = topCard.rows[0];
+    let card = topCard.rows[0];
     if (!card) {
+      await recycleDiscardIntoDeck(client, roomIdUpper);
+      topCard = await client.query<GameCard>(
+        "SELECT id FROM game_cards WHERE room_id = $1 AND location = 'deck' ORDER BY card_order ASC LIMIT 1",
+        [roomIdUpper],
+      );
+      card = topCard.rows[0];
+    }
+
+    if (!card) {
+      await client.query("ROLLBACK");
       return res.status(400).json({ message: "Deck empty" });
     }
 
-    await pool.query("UPDATE game_cards SET location = 'hand', player_id = $1 WHERE id = $2", [
+    await client.query("UPDATE game_cards SET location = 'hand', player_id = $1 WHERE id = $2", [
       turnActor.actingUserId,
       card.id,
     ]);
 
+    await client.query("COMMIT");
     broadcastToRoom(`game:room:${roomIdUpper}`, { event: "game:update", data: { action: "draw" } });
     return res.json({ success: true });
   } catch (error) {
+    await client.query("ROLLBACK");
     console.error(error);
     return res.status(500).json({ message: "Draw failed" });
+  } finally {
+    client.release();
   }
 });
 
@@ -1396,16 +1455,17 @@ router.get("/rooms/:roomId/state", requireAuth, async (req: Request, res: Respon
     ]);
     const turnUserId = state.rows[0]?.turn_user_id;
 
-    // Get all active players
-    const activePlayers = room
-      ? [room.created_by, room.player_2_id, room.player_3_id, room.player_4_id].filter(
-          (id): id is number => id !== null,
-        )
-      : [];
-
     if (!room) {
       return res.status(404).json({ message: "Room not found" });
     }
+
+    // Get all active players
+    const activePlayers = [
+      room.created_by,
+      room.player_2_id,
+      room.player_3_id,
+      room.player_4_id,
+    ].filter((id): id is number => id !== null);
 
     if (!activePlayers.includes(userId)) {
       return res.status(403).json({ message: "You are not in this room" });
@@ -1413,6 +1473,8 @@ router.get("/rooms/:roomId/state", requireAuth, async (req: Request, res: Respon
 
     const finished = results.rows.length > 0;
     const viewerPlayerId = visiblePlayerIdForState(room, selfPlay, userId, turnUserId);
+    const isSelfPlayOpponentTurn = selfPlay && turnUserId === room.player_2_id;
+    const isMyTurn = !finished && (turnUserId === userId || isSelfPlayOpponentTurn);
     const currentUserHand = cards.rows.filter(
       (card) => card.location === "hand" && card.player_id === viewerPlayerId,
     );
@@ -1422,8 +1484,7 @@ router.get("/rooms/:roomId/state", requireAuth, async (req: Request, res: Respon
     return res.json({
       cards: publicCards,
       turn: turnUserId,
-      isMyTurn:
-        !finished && (turnUserId === userId || (selfPlay && turnUserId === room?.player_2_id)),
+      isMyTurn,
       activePlayerId: turnUserId,
       viewerPlayerId,
       activePlayers: activePlayers,
