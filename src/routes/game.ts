@@ -224,7 +224,7 @@ function shuffleRows<T>(rows: T[]): T[] {
   return rows;
 }
 
-async function recycleDiscardIntoDeck(client: PoolClient, roomId: string): Promise<number> {
+export async function recycleDiscardIntoDeck(client: PoolClient, roomId: string): Promise<number> {
   const discardCards = await client.query<GameCard>(
     `SELECT id, suit, rank, location, player_id, card_order
        FROM game_cards
